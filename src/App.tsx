@@ -256,9 +256,23 @@ export default function App() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', message: '' })
   const [submitted, setSubmitted] = useState(false)
   const [adminUser, setAdminUser] = useState<string | null>(null)
-  const [loginEmail, setLoginEmail] = useState('')
-  const [loginNote, setLoginNote] = useState('')
-  const [loginBusy, setLoginBusy] = useState(false)
+  // PIN sign-in: 6 digits, never stored or logged anywhere.
+  const [pin, setPin] = useState('')
+  const [pinNote, setPinNote] = useState('')
+  const [pinBusy, setPinBusy] = useState(false)
+  const [failedAttempts, setFailedAttempts] = useState(0)
+  const [lockedUntil, setLockedUntil] = useState(0)
+  // Recovery: the old email magic-link flow, only for a forgotten PIN.
+  const [showRecovery, setShowRecovery] = useState(false)
+  const [recoveryEmail, setRecoveryEmail] = useState('kebraphotography@gmail.com')
+  const [recoveryNote, setRecoveryNote] = useState('')
+  const [recoveryBusy, setRecoveryBusy] = useState(false)
+  // Set / change PIN, while signed in.
+  const [currentPin, setCurrentPin] = useState('')
+  const [newPin, setNewPin] = useState('')
+  const [confirmPin, setConfirmPin] = useState('')
+  const [pinFormNote, setPinFormNote] = useState('')
+  const [pinFormBusy, setPinFormBusy] = useState(false)
   const [uploadNote, setUploadNote] = useState('')
   const [uploadBusy, setUploadBusy] = useState(false)
   const [urlDraft, setUrlDraft] = useState<Record<PageKey, string>>({ home: '', services: '', about: '', contact: '' })
@@ -285,16 +299,93 @@ export default function App() {
     return () => listener.subscription.unsubscribe()
   }, [])
 
-  async function handleLogin(e: React.FormEvent) {
+  /** PIN sign-in: the PIN is the Supabase Auth password for the admin email. */
+  async function handlePinLogin(e: React.FormEvent) {
     e.preventDefault()
-    if (!supabase) { setLoginNote('Supabase is not configured yet, so sign in is unavailable.'); return }
-    const email = loginEmail.trim().toLowerCase()
-    if (!ADMIN_EMAILS.includes(email)) { setLoginNote('That email is not the admin email for this site.'); return }
-    setLoginBusy(true)
-    setLoginNote('')
+    if (!supabase) { setPinNote('Supabase is not configured yet, so sign in is unavailable.'); return }
+    if (Date.now() < lockedUntil) { setPinNote('Too many wrong tries. Please wait a moment and try again.'); return }
+    if (!/^\d{6}$/.test(pin)) { setPinNote('Enter your 6-digit PIN.'); return }
+    setPinBusy(true)
+    setPinNote('')
+    let ok = false
+    for (const email of ADMIN_EMAILS) {
+      const { error } = await supabase.auth.signInWithPassword({ email, password: pin })
+      if (!error) { ok = true; break }
+    }
+    setPinBusy(false)
+    if (ok) {
+      setFailedAttempts(0)
+      setPin('')
+      // A successful PIN sign-in proves a PIN exists, so record that.
+      if (!settings.admin?.pinSet) {
+        const updated = { ...settings, admin: { pinSet: true } }
+        setSettings(updated)
+        void saveSettings(updated)
+      }
+    } else {
+      const n = failedAttempts + 1
+      setFailedAttempts(n)
+      if (n >= 5) {
+        setLockedUntil(Date.now() + 30000)
+        setPinNote('Wrong PIN 5 times. Wait 30 seconds before trying again.')
+        window.setTimeout(() => { setFailedAttempts(0); setLockedUntil(0) }, 30000)
+      } else {
+        setPinNote(`Wrong PIN. ${5 - n} ${5 - n === 1 ? 'try' : 'tries'} left before a short wait.`)
+      }
+    }
+  }
+
+  /** Forgotten PIN: send the old email magic link as the recovery path. */
+  async function handleForgotPin(e: React.FormEvent) {
+    e.preventDefault()
+    if (!supabase) { setRecoveryNote('Supabase is not configured yet.'); return }
+    const email = recoveryEmail.trim().toLowerCase()
+    if (!ADMIN_EMAILS.includes(email)) { setRecoveryNote('That email is not the admin email for this site.'); return }
+    setRecoveryBusy(true)
+    setRecoveryNote('')
     const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } })
-    setLoginBusy(false)
-    setLoginNote(error ? `Could not send the sign-in link: ${error.message}` : 'Sign-in link sent. Check your email and tap the link — it will bring you back here signed in.')
+    setRecoveryBusy(false)
+    setRecoveryNote(error ? `Could not send the sign-in link: ${error.message}` : 'Sign-in link sent. Check your email and tap the link — it will bring you back here signed in. Then set a new PIN below.')
+  }
+
+  /** First-time setup, while signed in via the email link: set the PIN. */
+  async function handleSetPin(e: React.FormEvent) {
+    e.preventDefault()
+    if (!supabase) { setPinFormNote('Supabase is not configured yet.'); return }
+    if (!/^\d{6}$/.test(newPin)) { setPinFormNote('Your PIN must be exactly 6 digits.'); return }
+    if (newPin !== confirmPin) { setPinFormNote('The two PINs do not match. Try again.'); return }
+    setPinFormBusy(true)
+    setPinFormNote('')
+    const { error } = await supabase.auth.updateUser({ password: newPin })
+    setPinFormBusy(false)
+    if (error) { setPinFormNote(`Could not save your PIN: ${error.message}`); return }
+    const updated = { ...settings, admin: { pinSet: true } }
+    setSettings(updated)
+    await saveSettings(updated)
+    setNewPin('')
+    setConfirmPin('')
+    setPinFormNote('PIN set — next time just enter your PIN to sign in.')
+  }
+
+  /** Change the PIN anytime, while signed in: current PIN is checked first. */
+  async function handleChangePin(e: React.FormEvent) {
+    e.preventDefault()
+    if (!supabase || !adminUser) { setPinFormNote('Sign in first.'); return }
+    if (!/^\d{6}$/.test(currentPin)) { setPinFormNote('Enter your current 6-digit PIN.'); return }
+    if (!/^\d{6}$/.test(newPin)) { setPinFormNote('Your new PIN must be exactly 6 digits.'); return }
+    if (newPin !== confirmPin) { setPinFormNote('The two new PINs do not match. Try again.'); return }
+    if (newPin === currentPin) { setPinFormNote('Your new PIN is the same as the current one.'); return }
+    setPinFormBusy(true)
+    setPinFormNote('')
+    const { error: checkError } = await supabase.auth.signInWithPassword({ email: adminUser, password: currentPin })
+    if (checkError) { setPinFormBusy(false); setPinFormNote('Your current PIN is wrong.'); return }
+    const { error } = await supabase.auth.updateUser({ password: newPin })
+    setPinFormBusy(false)
+    if (error) { setPinFormNote(`Could not change your PIN: ${error.message}`); return }
+    setCurrentPin('')
+    setNewPin('')
+    setConfirmPin('')
+    setPinFormNote('PIN changed. Use your new PIN next time you sign in.')
   }
 
   async function handleLogout() {
@@ -624,17 +715,42 @@ export default function App() {
 
   if (view === 'admin') {
     if (!adminUser) {
+      const locked = Date.now() < lockedUntil
       page = (
         <div className="wrap admin-grid">
           <div>
             <h1>Admin sign in</h1>
-            <p>This is Ashley's private admin area. Enter your admin email and we will send you a sign-in link — only Ashley's emails can sign in.</p>
-            <form className="consult" onSubmit={handleLogin}>
-              <label>Admin email</label>
-              <input type="email" required value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="kebraphotography@gmail.com" />
-              <button className="btn" type="submit" disabled={loginBusy}>{loginBusy ? 'Sending…' : 'Send me a sign-in link'}</button>
-              {loginNote && <p style={{ marginTop: 16, color: 'var(--accent)', fontWeight: 600 }}>{loginNote}</p>}
+            <p>This is Ashley's private admin area. Enter your 6-digit admin PIN — no email needed.</p>
+            {!settings.admin?.pinSet && (
+              <p style={{ color: 'var(--accent)', fontWeight: 600 }}>No PIN set yet. Use the sign-in link below first, then set your PIN in Admin.</p>
+            )}
+            <form className="consult" onSubmit={(e) => void handlePinLogin(e)}>
+              <label>Admin PIN</label>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                required
+                maxLength={6}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="••••••"
+                style={{ letterSpacing: '0.4em', fontSize: 22, textAlign: 'center' }}
+              />
+              <button className="btn" type="submit" disabled={pinBusy || locked}>{pinBusy ? 'Signing in…' : locked ? 'Wait a moment…' : 'Sign in with PIN'}</button>
+              {pinNote && <p style={{ marginTop: 16, color: 'var(--accent)', fontWeight: 600 }}>{pinNote}</p>}
             </form>
+            <p style={{ marginTop: 18 }}>
+              <button className="linklike" type="button" onClick={() => setShowRecovery((v) => !v)}>Forgot PIN? Send a sign-in link</button>
+            </p>
+            {showRecovery && (
+              <form className="consult" onSubmit={(e) => void handleForgotPin(e)}>
+                <label>Admin email</label>
+                <input type="email" required value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} placeholder="kebraphotography@gmail.com" />
+                <button className="btn secondary" type="submit" disabled={recoveryBusy}>{recoveryBusy ? 'Sending…' : 'Send me a sign-in link'}</button>
+                {recoveryNote && <p style={{ marginTop: 16, color: 'var(--accent)', fontWeight: 600 }}>{recoveryNote}</p>}
+              </form>
+            )}
           </div>
         </div>
       )
@@ -655,6 +771,29 @@ export default function App() {
             <p>{s.tagline}</p>
           </div>
         </div>
+
+        <section className="admin-section">
+          <h2>{s.admin?.pinSet ? 'Change admin PIN' : 'Set your admin PIN'}</h2>
+          <p style={{ fontSize: 14, color: 'var(--muted)' }}>
+            {s.admin?.pinSet
+              ? 'Your PIN is how you sign in as admin — no email needed. You can change it here anytime.'
+              : 'No PIN set yet. Choose a 6-digit PIN now — after this, you will sign in with just your PIN.'}
+          </p>
+          <form className="consult" style={{ marginTop: 0 }} onSubmit={(e) => void (s.admin?.pinSet ? handleChangePin(e) : handleSetPin(e))}>
+            {s.admin?.pinSet && (
+              <>
+                <label>Current PIN</label>
+                <input type="password" inputMode="numeric" autoComplete="off" required maxLength={6} value={currentPin} onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="••••••" style={{ letterSpacing: '0.4em', fontSize: 18, textAlign: 'center' }} />
+              </>
+            )}
+            <label>New PIN (6 digits)</label>
+            <input type="password" inputMode="numeric" autoComplete="off" required maxLength={6} value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="••••••" style={{ letterSpacing: '0.4em', fontSize: 18, textAlign: 'center' }} />
+            <label>Repeat new PIN</label>
+            <input type="password" inputMode="numeric" autoComplete="off" required maxLength={6} value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="••••••" style={{ letterSpacing: '0.4em', fontSize: 18, textAlign: 'center' }} />
+            <button className="btn" type="submit" disabled={pinFormBusy}>{pinFormBusy ? 'Saving…' : s.admin?.pinSet ? 'Change PIN' : 'Set PIN'}</button>
+            {pinFormNote && <p style={{ marginTop: 16, color: 'var(--accent)', fontWeight: 600 }}>{pinFormNote}</p>}
+          </form>
+        </section>
 
         <section className="admin-section"><h2>Business details</h2>
           <Field label="Business name" value={s.businessName} onChange={(v) => set((p) => ({ ...p, businessName: v }))} />
