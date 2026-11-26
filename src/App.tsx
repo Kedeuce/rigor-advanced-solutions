@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import { DEFAULT_SETTINGS, FONT_CHOICES, type PageKey, type ServiceItem, type SiteImage, type SiteSettings } from './lib/settings'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { DEFAULT_SETTINGS, DEFAULT_SLOT, FONT_CHOICES, IMAGE_SIZES, PLACEMENT_SLOTS, type ImageSize, type PageKey, type ServiceItem, type SiteImage, type SiteSettings } from './lib/settings'
 import { loadSettings, saveSettings } from './lib/store'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
-import { uploadSiteImage } from './lib/images'
+import { cropImageFile, rotatedImageDataUrl, uploadSiteImage, type CropRect } from './lib/images'
 
 // Static inline SVG icons for the four services, in the glowing blue style.
 const SERVICE_ICONS: ReactNode[] = [
@@ -34,12 +34,18 @@ const SERVICE_ICONS: ReactNode[] = [
   </svg>,
 ]
 
-function PageGallery({ images }: { images: SiteImage[] }) {
-  if (!images || images.length === 0) return null
+/**
+ * Images for one page at one placement slot, in list order.
+ * Images saved before placement existed carry the page's old fixed slot,
+ * so they keep showing exactly where they used to.
+ */
+function SlotImages({ page, slot, images, className = '' }: { page: PageKey; slot: string; images: SiteImage[]; className?: string }) {
+  const list = (images ?? []).filter((im) => (im.position || DEFAULT_SLOT[page]) === slot)
+  if (list.length === 0) return null
   return (
-    <div className="page-gallery">
-      {images.map((img) => (
-        <figure className="gallery-item" key={img.id}>
+    <div className={`slot-images ${className}`}>
+      {list.map((img) => (
+        <figure className={`slot-img size-${img.size || 'medium'}`} key={img.id}>
           <img src={img.url} alt={img.alt || 'Image'} loading="lazy" />
           {img.caption ? <figcaption>{img.caption}</figcaption> : null}
         </figure>
@@ -91,6 +97,157 @@ function SelectField({ label, value, onChange }: { label: string; value: string;
   )
 }
 
+type AspectChoice = 'free' | '1:1' | '16:9' | '4:3'
+const ASPECT_RATIOS: Record<AspectChoice, number | null> = { free: null, '1:1': 1, '16:9': 16 / 9, '4:3': 4 / 3 }
+
+/**
+ * Simple crop editor: a draggable, resizable crop box over a preview,
+ * aspect-ratio buttons and a rotate button. The preview is the photo
+ * already rotated, so the crop box matches exactly what gets saved.
+ * Phone-friendly: big touch targets, no tiny handles except one corner.
+ */
+function ImageCropper({ file, onDone, onCancel }: { file: File; onDone: (cropped: File) => void; onCancel: () => void }) {
+  const [rotation, setRotation] = useState(0)
+  const [aspect, setAspect] = useState<AspectChoice>('free')
+  const [preview, setPreview] = useState('')
+  const [previewSize, setPreviewSize] = useState({ w: 1, h: 1 })
+  const [crop, setCrop] = useState<CropRect>({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 })
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState('')
+  const boxRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{ mode: 'move' | 'resize'; sx: number; sy: number; start: CropRect } | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    setBusy(true)
+    rotatedImageDataUrl(file, rotation).then((url) => {
+      if (!alive) return
+      const img = new Image()
+      img.onload = () => {
+        if (!alive) return
+        setPreview(url)
+        setPreviewSize({ w: img.naturalWidth, h: img.naturalHeight })
+        setCrop(fitCrop({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, ASPECT_RATIOS[aspect]))
+        setBusy(false)
+      }
+      img.onerror = () => { if (alive) { setNote('Could not read this photo.'); setBusy(false) } }
+      img.src = url
+    }).catch(() => { if (alive) { setNote('Could not read this photo.'); setBusy(false) } })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file, rotation])
+
+  function fitCrop(r: CropRect, ratio: number | null): CropRect {
+    let { x, y, w, h } = r
+    if (ratio) {
+      const cx = x + w / 2
+      const cy = y + h / 2
+      if (w / h > ratio) w = h * ratio
+      else h = w / ratio
+      x = cx - w / 2
+      y = cy - h / 2
+    }
+    w = Math.min(w, 1)
+    h = Math.min(h, 1)
+    x = Math.max(0, Math.min(x, 1 - w))
+    y = Math.max(0, Math.min(y, 1 - h))
+    return { x, y, w, h }
+  }
+
+  function changeAspect(a: AspectChoice) {
+    setAspect(a)
+    setCrop((c) => fitCrop(c, ASPECT_RATIOS[a]))
+  }
+
+  function onPointerDown(e: React.PointerEvent, mode: 'move' | 'resize') {
+    e.preventDefault()
+    e.stopPropagation()
+    dragRef.current = { mode, sx: e.clientX, sy: e.clientY, start: crop }
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    const drag = dragRef.current
+    const el = boxRef.current
+    if (!drag || !el) return
+    const rect = el.getBoundingClientRect()
+    const dx = (e.clientX - drag.sx) / rect.width
+    const dy = (e.clientY - drag.sy) / rect.height
+    const s = drag.start
+    if (drag.mode === 'move') {
+      setCrop({
+        x: Math.max(0, Math.min(s.x + dx, 1 - s.w)),
+        y: Math.max(0, Math.min(s.y + dy, 1 - s.h)),
+        w: s.w,
+        h: s.h,
+      })
+    } else {
+      const ratio = ASPECT_RATIOS[aspect]
+      let w = Math.max(0.05, Math.min(s.w + dx, 1 - s.x))
+      let h = ratio ? w / ratio : Math.max(0.05, Math.min(s.h + dy, 1 - s.y))
+      if (ratio && h > 1 - s.y) { h = 1 - s.y; w = h * ratio }
+      setCrop({ x: s.x, y: s.y, w, h })
+    }
+  }
+
+  function onPointerUp() { dragRef.current = null }
+
+  async function confirm(useCrop: boolean) {
+    if (!preview) return
+    setBusy(true)
+    try {
+      const blob = await (await fetch(preview)).blob()
+      const cropped = await cropImageFile(blob, useCrop ? crop : { x: 0, y: 0, w: 1, h: 1 }, file.name)
+      onDone(cropped)
+    } catch {
+      setNote('Could not crop this photo. Try the full photo instead, or another image.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="cropper">
+      <h3 style={{ marginTop: 0 }}>Crop your photo</h3>
+      <p style={{ fontSize: 14, color: 'var(--muted)' }}>Drag the box to move it, drag its bottom-right corner to resize it. Pick a shape, or rotate the photo first.</p>
+      <div className="crop-aspects">
+        {(['free', '1:1', '16:9', '4:3'] as AspectChoice[]).map((a) => (
+          <button key={a} type="button" className={aspect === a ? 'btn secondary' : 'btn secondary'} style={{ marginTop: 0, padding: '8px 14px', minHeight: 40, background: aspect === a ? 'var(--accent)' : 'transparent', color: aspect === a ? 'var(--button-text)' : 'var(--accent)' }} onClick={() => changeAspect(a)}>
+            {a === 'free' ? 'Free' : a}
+          </button>
+        ))}
+        <button type="button" className="btn secondary" style={{ marginTop: 0, padding: '8px 14px', minHeight: 40 }} onClick={() => setRotation((r) => (r + 90) % 360)}>Rotate 90°</button>
+      </div>
+      {preview ? (
+        <div
+          ref={boxRef}
+          className="cropper-wrap"
+          style={{ aspectRatio: `${previewSize.w} / ${previewSize.h}` }}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          <img src={preview} alt="Photo to crop" draggable={false} />
+          <div
+            className="crop-box"
+            style={{ left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${crop.w * 100}%`, height: `${crop.h * 100}%` }}
+            onPointerDown={(e) => onPointerDown(e, 'move')}
+          >
+            <div className="crop-handle" onPointerDown={(e) => onPointerDown(e, 'resize')} />
+          </div>
+        </div>
+      ) : (
+        <p style={{ color: 'var(--muted)' }}>{busy ? 'Loading your photo…' : 'No preview.'}</p>
+      )}
+      {note && <p style={{ color: 'var(--accent)', fontWeight: 600, fontSize: 14 }}>{note}</p>}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+        <button type="button" className="btn" style={{ marginTop: 0 }} disabled={busy || !preview} onClick={() => void confirm(true)}>{busy ? 'Working…' : 'Use this crop'}</button>
+        <button type="button" className="btn secondary" style={{ marginTop: 0 }} disabled={busy || !preview} onClick={() => void confirm(false)}>Use full photo</button>
+        <button type="button" className="btn secondary" style={{ marginTop: 0 }} onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [view, setView] = useState<View>('home')
   const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SETTINGS)
@@ -105,6 +262,8 @@ export default function App() {
   const [uploadNote, setUploadNote] = useState('')
   const [uploadBusy, setUploadBusy] = useState(false)
   const [urlDraft, setUrlDraft] = useState<Record<PageKey, string>>({ home: '', services: '', about: '', contact: '' })
+  const [cropFile, setCropFile] = useState<File | null>(null)
+  const [cropTarget, setCropTarget] = useState<{ kind: 'page'; page: PageKey } | { kind: 'hero' } | { kind: 'replace'; page: PageKey; id: string } | null>(null)
 
   useEffect(() => {
     loadSettings().then((s) => { setSettings(s); setLoaded(true) })
@@ -166,35 +325,53 @@ export default function App() {
 
   const newImageId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   const addImage = (page: PageKey, url: string, alt = '') =>
-    set((s) => ({ ...s, images: { ...s.images, [page]: [...(s.images?.[page] ?? []), { id: newImageId(), url, alt, caption: '' }] } }))
+    set((s) => ({ ...s, images: { ...s.images, [page]: [...(s.images?.[page] ?? []), { id: newImageId(), url, alt, caption: '', position: DEFAULT_SLOT[page], size: 'medium' as ImageSize }] } }))
   const updateImage = (page: PageKey, id: string, patch: Partial<SiteImage>) =>
     set((s) => ({ ...s, images: { ...s.images, [page]: (s.images?.[page] ?? []).map((im) => (im.id === id ? { ...im, ...patch } : im)) } }))
   const removeImage = (page: PageKey, id: string) =>
     set((s) => ({ ...s, images: { ...s.images, [page]: (s.images?.[page] ?? []).filter((im) => im.id !== id) } }))
+  const moveImage = (page: PageKey, id: string, dir: -1 | 1) =>
+    set((s) => {
+      const list = [...(s.images?.[page] ?? [])]
+      const i = list.findIndex((im) => im.id === id)
+      const j = i + dir
+      if (i < 0 || j < 0 || j >= list.length) return s
+      ;[list[i], list[j]] = [list[j], list[i]]
+      return { ...s, images: { ...s.images, [page]: list } }
+    })
 
-  async function handleImageFile(page: PageKey, file: File | undefined) {
+  /** Picking a photo opens the cropper first; the cropped photo is uploaded when she confirms it. */
+  function handleImageFile(page: PageKey, file: File | undefined) {
     if (!file) return
-    setUploadBusy(true)
-    setUploadNote('Uploading your image…')
-    try {
-      const { url, stored } = await uploadSiteImage(file)
-      addImage(page, url, file.name.replace(/\.[^.]+$/, ''))
-      setUploadNote(stored === 'storage' ? 'Image added. Press Save Changes to make it live.' : 'Image added (saved with the site settings). Press Save Changes to make it live.')
-    } catch {
-      setUploadNote('That image could not be added. Try a different photo, or paste an image link instead.')
-    } finally {
-      setUploadBusy(false)
-    }
+    setCropFile(file)
+    setCropTarget({ kind: 'page', page })
   }
 
-  async function handleHeroImageFile(file: File | undefined) {
+  function handleHeroImageFile(file: File | undefined) {
     if (!file) return
+    setCropFile(file)
+    setCropTarget({ kind: 'hero' })
+  }
+
+  async function handleCropDone(cropped: File) {
+    const target = cropTarget
+    setCropFile(null)
+    setCropTarget(null)
+    if (!target) return
     setUploadBusy(true)
     setUploadNote('Uploading your image…')
     try {
-      const { url } = await uploadSiteImage(file)
-      set((p) => ({ ...p, heroImage: url }))
-      setUploadNote('Hero image changed. Press Save Changes to make it live.')
+      const { url, stored } = await uploadSiteImage(cropped)
+      if (target.kind === 'hero') {
+        set((p) => ({ ...p, heroImage: url }))
+        setUploadNote('Hero image changed. Press Save Changes to make it live.')
+      } else if (target.kind === 'replace') {
+        updateImage(target.page, target.id, { url })
+        setUploadNote('Photo replaced. Press Save Changes to make it live.')
+      } else {
+        addImage(target.page, url, cropped.name.replace(/\.[^.]+$/, ''))
+        setUploadNote(stored === 'storage' ? 'Image added. Press Save Changes to make it live.' : 'Image added (saved with the site settings). Press Save Changes to make it live.')
+      }
     } catch {
       setUploadNote('That image could not be added. Try a different photo, or paste an image link instead.')
     } finally {
@@ -212,25 +389,53 @@ export default function App() {
 
   const imageEditor = (page: PageKey, label: string) => {
     const list = settings.images?.[page] ?? []
+    const cropHere = cropFile && cropTarget && ((cropTarget.kind === 'page' && cropTarget.page === page) || (cropTarget.kind === 'replace' && cropTarget.page === page))
     return (
       <section className="admin-section" key={`images-${page}`}>
         <h2>{label}</h2>
-        <p style={{ fontSize: 14, color: 'var(--muted)' }}>Add photos to this page, change their descriptions, or delete them. Images appear in a gallery on the page, below the main sections.</p>
+        <p style={{ fontSize: 14, color: 'var(--muted)' }}>Add photos to this page and choose exactly where each one sits, how big it is, and what order they appear in. Uploading a photo lets you crop and rotate it first.</p>
         {list.length === 0 && <p style={{ fontSize: 14, color: 'var(--muted)' }}>No images on this page yet.</p>}
-        {list.map((img) => (
+        {list.map((img, i) => (
           <div className="img-row" key={img.id}>
             <img className="img-thumb" src={img.url} alt={img.alt || 'Image preview'} />
             <div className="img-row-fields">
               <Field label="Description (alt text)" value={img.alt} onChange={(v) => updateImage(page, img.id, { alt: v })} />
               <Field label="Caption under the image (optional)" value={img.caption ?? ''} onChange={(v) => updateImage(page, img.id, { caption: v })} />
-              <button className="btn secondary" style={{ marginTop: 0, padding: '10px 18px', minHeight: 44 }} onClick={() => { if (window.confirm('Delete this image from the page?')) removeImage(page, img.id) }}>Delete image</button>
+              <div className="field">
+                <label>Where on the page</label>
+                <select value={img.position || DEFAULT_SLOT[page]} onChange={(e) => updateImage(page, img.id, { position: e.target.value })}>
+                  {PLACEMENT_SLOTS[page].map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Size</label>
+                <select value={img.size || 'medium'} onChange={(e) => updateImage(page, img.id, { size: e.target.value as ImageSize })}>
+                  {IMAGE_SIZES.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn secondary" style={{ marginTop: 0, padding: '10px 14px', minHeight: 44 }} disabled={i === 0} onClick={() => moveImage(page, img.id, -1)}>↑ Move up</button>
+                <button className="btn secondary" style={{ marginTop: 0, padding: '10px 14px', minHeight: 44 }} disabled={i === list.length - 1} onClick={() => moveImage(page, img.id, 1)}>↓ Move down</button>
+                <label className="btn secondary" style={{ marginTop: 0, padding: '10px 14px', minHeight: 44, display: 'inline-block', textAlign: 'center' }}>
+                  Replace photo
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) { setCropFile(f); setCropTarget({ kind: 'replace', page, id: img.id }) } e.target.value = '' }} />
+                </label>
+                <button className="btn secondary" style={{ marginTop: 0, padding: '10px 14px', minHeight: 44 }} onClick={() => { if (window.confirm('Delete this image from the page?')) removeImage(page, img.id) }}>Delete image</button>
+              </div>
             </div>
           </div>
         ))}
+        {cropHere && (
+          <ImageCropper file={cropFile} onDone={(f) => void handleCropDone(f)} onCancel={() => { setCropFile(null); setCropTarget(null) }} />
+        )}
         <div className="img-add">
           <label className="btn secondary" style={{ marginTop: 0, padding: '10px 18px', minHeight: 44, display: 'inline-block', textAlign: 'center' }}>
             {uploadBusy ? 'Uploading…' : 'Upload a photo'}
-            <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadBusy} onChange={(e) => { void handleImageFile(page, e.target.files?.[0]); e.target.value = '' }} />
+            <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadBusy} onChange={(e) => { handleImageFile(page, e.target.files?.[0]); e.target.value = '' }} />
           </label>
           <input type="text" placeholder="Or paste an image link, then press Add" value={urlDraft[page]} onChange={(e) => setUrlDraft((d) => ({ ...d, [page]: e.target.value }))} />
           <button className="btn secondary" style={{ marginTop: 0, padding: '10px 18px', minHeight: 44 }} onClick={() => handleImageUrl(page)}>Add</button>
@@ -262,8 +467,10 @@ export default function App() {
   let page: ReactNode = null
 
   if (view === 'home') {
+    const heroSlotImages = (s.images?.home ?? []).filter((im) => (im.position || DEFAULT_SLOT.home) === 'hero')
     page = (
       <>
+        <div className="wrap"><SlotImages page="home" slot="top" images={s.images?.home ?? []} /></div>
         <section className="hero">
           <div className="wrap hero-inner">
             <div className="hero-text">
@@ -273,7 +480,7 @@ export default function App() {
               <p className="lede">{s.home.intro}</p>
               <p className="gold-line">{s.home.goldLine}</p>
             </div>
-            {s.heroImage ? <img className="hero-img" src={s.heroImage} alt="Glowing network globe" /> : null}
+            {s.heroImage ? <img className="hero-img" src={s.heroImage} alt="Glowing network globe" /> : heroSlotImages.map((im) => <img key={im.id} className="hero-img" src={im.url} alt={im.alt || 'Image'} />)}
           </div>
         </section>
         <section className="section"><div className="wrap">
@@ -289,6 +496,7 @@ export default function App() {
               </article>
             ))}
           </div>
+          <SlotImages page="home" slot="after-services" images={s.images?.home ?? []} />
         </div></section>
         <section className="section"><div className="wrap">
           <h2 className="section-title">{s.home.whyTitle}</h2>
@@ -310,8 +518,9 @@ export default function App() {
               </article>
             ))}
           </div>
-          <PageGallery images={s.images?.home ?? []} />
+          <SlotImages page="home" slot="after-how-we-work" images={s.images?.home ?? []} />
         </div></section>
+        <div className="wrap"><SlotImages page="home" slot="bottom" images={s.images?.home ?? []} /></div>
       </>
     )
   }
@@ -319,6 +528,7 @@ export default function App() {
   if (view === 'services') {
     page = (
       <section className="section" style={{ paddingBottom: 84 }}><div className="wrap">
+        <SlotImages page="services" slot="top" images={s.images?.services ?? []} />
         <span className="eyebrow">{s.services.label}</span>
         <h1>{s.services.title}</h1>
         <p style={{ maxWidth: 720, fontSize: 18 }}>{s.services.intro}</p>
@@ -333,7 +543,8 @@ export default function App() {
             <ul>{it.includes.map((inc) => <li key={inc}>{inc}</li>)}</ul>
           </article>
         ))}
-        <PageGallery images={s.images?.services ?? []} />
+        <SlotImages page="services" slot="after-details" images={s.images?.services ?? []} />
+        <SlotImages page="services" slot="bottom" images={s.images?.services ?? []} />
       </div></section>
     )
   }
@@ -341,6 +552,7 @@ export default function App() {
   if (view === 'about') {
     page = (
       <section className="section"><div className="wrap">
+        <SlotImages page="about" slot="top" images={s.images?.about ?? []} />
         <span className="eyebrow">{s.about.label}</span>
         <h1>{s.about.title}</h1>
         <p style={{ maxWidth: 720, fontSize: 18 }}>{s.about.intro}</p>
@@ -349,13 +561,15 @@ export default function App() {
           <article className="info-card"><h2>{s.about.missionTitle}</h2><p>{s.about.missionText}</p></article>
           <article className="info-card"><h2>{s.about.promiseTitle}</h2><p>{s.about.promiseText}</p></article>
         </div>
+        <SlotImages page="about" slot="after-story" images={s.images?.about ?? []} />
         <h2 className="section-title" style={{ marginTop: 40 }}>{s.about.valuesTitle}</h2>
         <div className="cards">
           {s.about.values.map((v) => (
             <article className="card" key={v.title}><h3>{v.title}</h3><p>{v.text}</p></article>
           ))}
         </div>
-        <PageGallery images={s.images?.about ?? []} />
+        <SlotImages page="about" slot="after-values" images={s.images?.about ?? []} />
+        <SlotImages page="about" slot="bottom" images={s.images?.about ?? []} />
       </div></section>
     )
   }
@@ -363,6 +577,7 @@ export default function App() {
   if (view === 'contact') {
     page = (
       <section className="section"><div className="wrap">
+        <SlotImages page="contact" slot="top" images={s.images?.contact ?? []} />
         <span className="eyebrow">{s.contact.label}</span>
         <h1>{s.contact.title}</h1>
         <p style={{ maxWidth: 720, fontSize: 18 }}>{s.contact.intro}</p>
@@ -378,6 +593,7 @@ export default function App() {
             <p>{s.contact.locationCardNote}</p>
           </article>
         </div>
+        <SlotImages page="contact" slot="after-info" images={s.images?.contact ?? []} />
         <form className="consult" onSubmit={(e) => { e.preventDefault(); setSubmitted(true) }}>
           <h2>{s.contact.formTitle}</h2>
           <label>{s.contact.nameLabel}</label>
@@ -395,12 +611,13 @@ export default function App() {
           )}
           {submitted && <a className="btn secondary" href={`tel:${s.phoneTel}`} style={{ marginLeft: 12, textDecoration: 'none' }}>{s.contact.callButtonLabel}</a>}
         </form>
-        <PageGallery images={s.images?.contact ?? []} />
+        <SlotImages page="contact" slot="after-form" images={s.images?.contact ?? []} />
         <div className="closing">
           <h2>{s.contact.closingTitle}</h2>
           <p>{s.contact.closingText}</p>
           <a className="btn" href={`tel:${s.phoneTel}`} style={{ textDecoration: 'none' }}>{s.contact.callButtonLabel}</a>
         </div>
+        <SlotImages page="contact" slot="bottom" images={s.images?.contact ?? []} />
       </div></section>
     )
   }
@@ -479,9 +696,12 @@ export default function App() {
           <div className="img-add" style={{ marginTop: 0, marginBottom: 14 }}>
             <label className="btn secondary" style={{ marginTop: 0, padding: '10px 18px', minHeight: 44, display: 'inline-block', textAlign: 'center' }}>
               {uploadBusy ? 'Uploading…' : 'Upload a new hero image'}
-              <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadBusy} onChange={(e) => { void handleHeroImageFile(e.target.files?.[0]); e.target.value = '' }} />
+              <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadBusy} onChange={(e) => { handleHeroImageFile(e.target.files?.[0]); e.target.value = '' }} />
             </label>
           </div>
+          {cropFile && cropTarget?.kind === 'hero' && (
+            <ImageCropper file={cropFile} onDone={(f) => void handleCropDone(f)} onCancel={() => { setCropFile(null); setCropTarget(null) }} />
+          )}
           <Field label="Services label" value={s.home.servicesLabel} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, servicesLabel: v } }))} />
           <Field label="Why Rigor title" value={s.home.whyTitle} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyTitle: v } }))} />
           <Field label="Why Rigor intro" value={s.home.whyIntro} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyIntro: v } }))} />
