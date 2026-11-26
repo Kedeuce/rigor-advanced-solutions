@@ -38,6 +38,7 @@ function mergeWithDefaults(raw: unknown): SiteSettings {
     },
     contact: { ...DEFAULT_SETTINGS.contact, ...((raw as SiteSettings).contact ?? {}) },
     footer: { ...DEFAULT_SETTINGS.footer, ...((raw as SiteSettings).footer ?? {}) },
+    admin: { ...DEFAULT_SETTINGS.admin, ...((raw as SiteSettings).admin ?? {}) },
     images: {
       home: normalizeImages('home', (raw as SiteSettings).images?.home),
       services: normalizeImages('services', (raw as SiteSettings).images?.services),
