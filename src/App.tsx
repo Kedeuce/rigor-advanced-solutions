@@ -276,8 +276,10 @@ export default function App() {
   const [uploadNote, setUploadNote] = useState('')
   const [uploadBusy, setUploadBusy] = useState(false)
   const [urlDraft, setUrlDraft] = useState<Record<PageKey, string>>({ home: '', services: '', about: '', contact: '' })
+  /** Where a newly added image goes on each page — picked in the Add row, before adding. */
+  const [addPosition, setAddPosition] = useState<Record<PageKey, string>>({ home: DEFAULT_SLOT.home, services: DEFAULT_SLOT.services, about: DEFAULT_SLOT.about, contact: DEFAULT_SLOT.contact })
   const [cropFile, setCropFile] = useState<File | null>(null)
-  const [cropTarget, setCropTarget] = useState<{ kind: 'page'; page: PageKey } | { kind: 'hero' } | { kind: 'replace'; page: PageKey; id: string } | null>(null)
+  const [cropTarget, setCropTarget] = useState<{ kind: 'page'; page: PageKey; position: string } | { kind: 'hero' } | { kind: 'replace'; page: PageKey; id: string } | null>(null)
 
   // Admin is hidden from public visitors: it opens only via the /admin
   // path (e.g. https://rigoradvancedsolutions.com/admin) or the #admin
@@ -427,6 +429,8 @@ export default function App() {
     '--heading-font': `'${settings.fonts.headingFont}', sans-serif`,
     '--body-font': `'${settings.fonts.bodyFont}', sans-serif`,
     '--radius': `${settings.fonts.radius}px`,
+    '--heading-size': `${Math.min(72, Math.max(12, settings.fonts.headingSize ?? 38))}px`,
+    '--body-size': `${Math.min(24, Math.max(12, settings.fonts.bodySize ?? 16))}px`,
   }) as CSSProperties, [settings])
 
   // Leaving Admin (sign out, or Preview Site) returns the address bar to
@@ -445,8 +449,8 @@ export default function App() {
     set((s) => ({ ...s, services: { ...s.services, items: s.services.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) } }))
 
   const newImageId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-  const addImage = (page: PageKey, url: string, alt = '') =>
-    set((s) => ({ ...s, images: { ...s.images, [page]: [...(s.images?.[page] ?? []), { id: newImageId(), url, alt, caption: '', position: DEFAULT_SLOT[page], size: 'medium' as ImageSize }] } }))
+  const addImage = (page: PageKey, url: string, alt = '', position?: string) =>
+    set((s) => ({ ...s, images: { ...s.images, [page]: [...(s.images?.[page] ?? []), { id: newImageId(), url, alt, caption: '', position: position || DEFAULT_SLOT[page], size: 'medium' as ImageSize }] } }))
   const updateImage = (page: PageKey, id: string, patch: Partial<SiteImage>) =>
     set((s) => ({ ...s, images: { ...s.images, [page]: (s.images?.[page] ?? []).map((im) => (im.id === id ? { ...im, ...patch } : im)) } }))
   const removeImage = (page: PageKey, id: string) =>
@@ -465,7 +469,7 @@ export default function App() {
   function handleImageFile(page: PageKey, file: File | undefined) {
     if (!file) return
     setCropFile(file)
-    setCropTarget({ kind: 'page', page })
+    setCropTarget({ kind: 'page', page, position: addPosition[page] || DEFAULT_SLOT[page] })
   }
 
   function handleHeroImageFile(file: File | undefined) {
@@ -490,7 +494,7 @@ export default function App() {
         updateImage(target.page, target.id, { url })
         setUploadNote('Photo replaced. Press Save Changes to make it live.')
       } else {
-        addImage(target.page, url, cropped.name.replace(/\.[^.]+$/, ''))
+        addImage(target.page, url, cropped.name.replace(/\.[^.]+$/, ''), target.position)
         setUploadNote(stored === 'storage' ? 'Image added. Press Save Changes to make it live.' : 'Image added (saved with the site settings). Press Save Changes to make it live.')
       }
     } catch {
@@ -503,7 +507,7 @@ export default function App() {
   function handleImageUrl(page: PageKey) {
     const url = (urlDraft[page] || '').trim()
     if (!url) { setUploadNote('Paste an image link first, or choose a file to upload.'); return }
-    addImage(page, url)
+    addImage(page, url, '', addPosition[page] || DEFAULT_SLOT[page])
     setUrlDraft((d) => ({ ...d, [page]: '' }))
     setUploadNote('Image added. Press Save Changes to make it live.')
   }
@@ -554,6 +558,14 @@ export default function App() {
           <ImageCropper file={cropFile} onDone={(f) => void handleCropDone(f)} onCancel={() => { setCropFile(null); setCropTarget(null) }} />
         )}
         <div className="img-add">
+          <div className="field" style={{ flex: '1 1 220px', minWidth: 200, marginBottom: 0 }}>
+            <label>Where on the page</label>
+            <select value={addPosition[page] || DEFAULT_SLOT[page]} onChange={(e) => setAddPosition((d) => ({ ...d, [page]: e.target.value }))}>
+              {PLACEMENT_SLOTS[page].map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
           <label className="btn secondary" style={{ marginTop: 0, padding: '10px 18px', minHeight: 44, display: 'inline-block', textAlign: 'center' }}>
             {uploadBusy ? 'Uploading…' : 'Upload a photo'}
             <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadBusy} onChange={(e) => { handleImageFile(page, e.target.files?.[0]); e.target.value = '' }} />
@@ -840,6 +852,12 @@ export default function App() {
         <section className="admin-section"><h2>Design, fonts and colours</h2>
           <SelectField label="Heading font" value={s.fonts.headingFont} onChange={(v) => set((p) => ({ ...p, fonts: { ...p.fonts, headingFont: v } }))} />
           <SelectField label="Body font" value={s.fonts.bodyFont} onChange={(v) => set((p) => ({ ...p, fonts: { ...p.fonts, bodyFont: v } }))} />
+          <div className="field"><label>Heading size (px)</label>
+            <input type="number" min={12} max={72} value={s.fonts.headingSize ?? 38} onChange={(e) => set((p) => ({ ...p, fonts: { ...p.fonts, headingSize: Number(e.target.value) || 38 } }))} />
+          </div>
+          <div className="field"><label>Body text size (px)</label>
+            <input type="number" min={12} max={24} value={s.fonts.bodySize ?? 16} onChange={(e) => set((p) => ({ ...p, fonts: { ...p.fonts, bodySize: Number(e.target.value) || 16 } }))} />
+          </div>
           <div className="field"><label>Corner roundness (px)</label>
             <input type="text" value={String(s.fonts.radius)} onChange={(e) => set((p) => ({ ...p, fonts: { ...p.fonts, radius: Number(e.target.value) || 0 } }))} />
           </div>

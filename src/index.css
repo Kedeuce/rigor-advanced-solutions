@@ -6,6 +6,7 @@ body {
   background: var(--bg, #040b18);
   color: var(--body);
   font-family: var(--body-font), system-ui, -apple-system, sans-serif;
+  font-size: var(--body-size, 16px);
   line-height: 1.6;
 }
 h1, h2, h3, h4 { font-family: var(--heading-font), system-ui, sans-serif; color: var(--heading); line-height: 1.15; margin: 0 0 12px; }
@@ -28,7 +29,7 @@ button { font-family: inherit; cursor: pointer; }
 .hero { padding: 56px 0 40px; position: relative; overflow: hidden; }
 .hero-inner { display: flex; align-items: center; gap: 32px; }
 .hero-text { flex: 1; min-width: 0; }
-.hero h1 { font-size: clamp(34px, 6vw, 60px); max-width: 720px; }
+.hero h1 { font-size: clamp(34px, 6vw, calc(var(--heading-size, 38px) * 1.6)); max-width: 720px; }
 .hero .subhead { color: var(--accent); font-size: clamp(18px, 2.5vw, 24px); font-weight: 600; }
 .hero p.lede { max-width: 680px; font-size: 18px; }
 .hero-img { flex: 0 0 340px; width: 340px; height: 340px; object-fit: contain; filter: drop-shadow(0 0 24px rgba(86, 200, 245, 0.35)); }
@@ -77,7 +78,10 @@ button { font-family: inherit; cursor: pointer; }
 
 .eyebrow { display: inline-block; font-size: 13px; letter-spacing: 0.14em; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 14px; }
 .section { padding: 44px 0; }
-.section-title { font-size: clamp(26px, 4vw, 38px); }
+.section-title { font-size: clamp(calc(var(--heading-size, 38px) * 0.68), 4vw, var(--heading-size, 38px)); }
+/* Page titles (Services / About / Contact) and page h2s follow the heading size too */
+.section .wrap > h1 { font-size: var(--heading-size, 38px); }
+.service-detail h2, .info-card h2 { font-size: calc(var(--heading-size, 38px) * 0.63); }
 .gold-line { color: var(--gold, var(--accent)); font-weight: 600; font-size: 18px; margin: 18px 0 0; }
 .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
 @media (max-width: 1024px) { .cards { grid-template-columns: repeat(2, 1fr); } }
@@ -107,7 +111,7 @@ form.consult textarea { min-height: 120px; resize: vertical; }
 .site-footer .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
 @media (max-width: 700px) { .site-footer .cols { grid-template-columns: 1fr; } }
 .closing { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; margin: 28px 0; text-align: center; }
-.closing h2 { font-size: clamp(24px, 4vw, 34px); }
+.closing h2 { font-size: clamp(calc(var(--heading-size, 38px) * 0.63), 4vw, calc(var(--heading-size, 38px) * 0.9)); }
 
 /* Admin */
 .admin-bar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 14px; }
