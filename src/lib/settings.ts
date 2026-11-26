@@ -31,6 +31,7 @@ export interface SiteSettings {
     muted: string
     border: string
     buttonText: string
+    gold: string
   }
   fonts: { headingFont: string; bodyFont: string; radius: number }
   nav: { home: string; services: string; about: string; contact: string; admin: string }
@@ -98,20 +99,21 @@ export const FONT_CHOICES = [
 export const DEFAULT_SETTINGS: SiteSettings = {
   businessName: 'Rigor Advanced Solutions',
   tagline: "Empowering Tomorrow's Leaders With AI Technology",
-  phoneDisplay: '+1 (720) 326 9999',
-  phoneTel: '+17203269999',
-  location: 'Denver, Colorado',
+  phoneDisplay: '',
+  phoneTel: '',
+  location: '',
   colors: {
     background: '#040b18',
-    surface: '#0a1730',
-    accent: '#56c8f5',
-    heading: '#abd8f8',
-    body: '#b9d6f2',
-    muted: '#8fb4d8',
-    border: '#1d3a5f',
+    surface: '#08182e',
+    accent: '#93e3fd',
+    heading: '#00a1d8',
+    body: '#00a1d8',
+    muted: '#93e3fd',
+    border: '#0e5f8f',
     buttonText: '#04101f',
+    gold: '#669d34',
   },
-  fonts: { headingFont: 'Outfit', bodyFont: 'Plus Jakarta Sans', radius: 16 },
+  fonts: { headingFont: 'Montserrat', bodyFont: 'Plus Jakarta Sans', radius: 9 },
   nav: { home: 'Home', services: 'Services', about: 'About', contact: 'Contact', admin: 'Admin' },
   home: {
     eyebrow: 'RIGOR ADVANCED SOLUTIONS',
