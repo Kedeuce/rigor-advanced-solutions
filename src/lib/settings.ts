@@ -16,14 +16,61 @@ export interface ProcessStep {
   text: string
 }
 
+export type ImageSize = 'small' | 'medium' | 'large' | 'full'
+
+export const IMAGE_SIZES: { value: ImageSize; label: string }[] = [
+  { value: 'small', label: 'Small' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'large', label: 'Large' },
+  { value: 'full', label: 'Full width' },
+]
+
 export interface SiteImage {
   id: string
   url: string
   alt: string
   caption?: string
+  /** Placement slot on the page. Images with no position render at the page's previous fixed spot. */
+  position?: string
+  size?: ImageSize
 }
 
 export type PageKey = 'home' | 'services' | 'about' | 'contact'
+
+/** Where an image can sit on each page. `defaultSlot` is the page's previous fixed gallery spot. */
+export const PLACEMENT_SLOTS: Record<PageKey, { value: string; label: string }[]> = {
+  home: [
+    { value: 'top', label: 'Top of the page, above the hero' },
+    { value: 'hero', label: 'Beside the hero text (only when the globe is blank)' },
+    { value: 'after-services', label: 'After the services' },
+    { value: 'after-how-we-work', label: 'After How We Work' },
+    { value: 'bottom', label: 'Bottom of the page' },
+  ],
+  services: [
+    { value: 'top', label: 'Top of the page' },
+    { value: 'after-details', label: 'After the service details' },
+    { value: 'bottom', label: 'Bottom of the page' },
+  ],
+  about: [
+    { value: 'top', label: 'Top of the page' },
+    { value: 'after-story', label: 'After Our Mission and Our Promise' },
+    { value: 'after-values', label: 'After Our Values' },
+    { value: 'bottom', label: 'Bottom of the page' },
+  ],
+  contact: [
+    { value: 'top', label: 'Top of the page' },
+    { value: 'after-info', label: 'After the phone and location cards' },
+    { value: 'after-form', label: 'After the booking form' },
+    { value: 'bottom', label: 'Bottom of the page, after the closing band' },
+  ],
+}
+
+export const DEFAULT_SLOT: Record<PageKey, string> = {
+  home: 'after-how-we-work',
+  services: 'after-details',
+  about: 'after-values',
+  contact: 'after-form',
+}
 
 export interface SiteSettings {
   businessName: string
