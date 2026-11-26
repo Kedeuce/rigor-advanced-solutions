@@ -133,7 +133,7 @@ form.consult textarea { min-height: 120px; resize: vertical; }
 .field-with-size > input[type="text"], .field-with-size > textarea { flex: 1; min-width: 0; width: auto; }
 .size-box { flex: 0 0 92px; display: flex; flex-direction: column; }
 .size-box > span { font-weight: 600; color: var(--heading); font-size: 14px; margin-bottom: 5px; }
-.size-box input[type="number"] { width: 100%; padding: 11px 8px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); color: var(--body); font: inherit; font-size: 15px; text-align: center; }
+.size-box input { width: 100%; padding: 11px 8px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); color: var(--body); font: inherit; font-size: 15px; text-align: center; }
 /* Checkbox rows in Admin (section breaker toggles) */
 .check-field { display: flex; gap: 10px; align-items: center; font-weight: 600; color: var(--heading); font-size: 15px; margin-bottom: 12px; cursor: pointer; }
 .check-field input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 20px; accent-color: var(--accent); cursor: pointer; }

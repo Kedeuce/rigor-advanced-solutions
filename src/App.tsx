@@ -113,19 +113,13 @@ function Field({ label, value, onChange, textarea = false, sizeKey, sizeValue, s
         {sizeKey && onSizeChange && (
           <div className="size-box">
             <span>Size</span>
-            <input
-              type="number"
+            <DraftSizeInput
+              value={sizeValue}
+              placeholder={sizePlaceholder}
               min={10}
               max={96}
-              value={sizeValue ?? ''}
-              placeholder={sizePlaceholder !== undefined ? String(sizePlaceholder) : ''}
+              onCommit={onSizeChange}
               title="Size of this text in pixels — leave blank to use the general size"
-              onChange={(e) => {
-                const raw = e.target.value
-                if (raw === '') { onSizeChange(undefined); return }
-                const n = Number(raw)
-                if (Number.isFinite(n)) onSizeChange(Math.round(n))
-              }}
             />
           </div>
         )}
@@ -176,21 +170,58 @@ function CheckField({ label, value, onChange }: { label: string; value: boolean;
 function SizeField({ label, value, placeholder, onChange }: { label: string; value?: number; placeholder?: number; onChange: (n: number | undefined) => void }) {
   return (
     <div className="field"><label>{label}</label>
-      <input
-        type="number"
+      <DraftSizeInput
+        value={value}
+        placeholder={placeholder}
         min={10}
         max={96}
-        value={value ?? ''}
-        placeholder={placeholder !== undefined ? String(placeholder) : ''}
+        onCommit={onChange}
         title="Size of this text in pixels — leave blank to use the general size"
-        onChange={(e) => {
-          const raw = e.target.value
-          if (raw === '') { onChange(undefined); return }
-          const n = Number(raw)
-          if (Number.isFinite(n)) onChange(Math.round(n))
-        }}
       />
     </div>
+  )
+}
+
+/**
+ * A size input that types smoothly on iPhone.
+ *
+ * The old version wrote every keystroke straight into the whole site
+ * settings, re-rendering the entire Admin on each digit — on iOS that
+ * kills typing (the keyboard dismisses, focus is lost, digits don't
+ * stick). This one keeps a LOCAL draft while typing: only the draft
+ * changes per keystroke, nothing else re-renders. The size is committed
+ * to settings on blur (or Enter). Empty clears the size (undefined).
+ * Uses type="text" with a numeric keyboard instead of type="number",
+ * which has its own quirks on iOS.
+ */
+function DraftSizeInput({ value, placeholder, min, max, onCommit, title }: {
+  value?: number
+  placeholder?: number
+  min: number
+  max: number
+  onCommit: (n: number | undefined) => void
+  title: string
+}) {
+  const [draft, setDraft] = useState(value !== undefined ? String(value) : '')
+  useEffect(() => { setDraft(value !== undefined ? String(value) : '') }, [value])
+  const commit = () => {
+    const raw = draft.trim()
+    if (raw === '') { onCommit(undefined); return }
+    const n = Number(raw)
+    if (Number.isFinite(n)) onCommit(Math.min(max, Math.max(min, Math.round(n))))
+  }
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      value={draft}
+      placeholder={placeholder !== undefined ? String(placeholder) : ''}
+      title={title}
+      onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+    />
   )
 }
 
@@ -1029,10 +1060,10 @@ export default function App() {
           <SelectField label="Heading font" value={s.fonts.headingFont} onChange={(v) => set((p) => ({ ...p, fonts: { ...p.fonts, headingFont: v } }))} />
           <SelectField label="Body font" value={s.fonts.bodyFont} onChange={(v) => set((p) => ({ ...p, fonts: { ...p.fonts, bodyFont: v } }))} />
           <div className="field"><label>Heading size (px)</label>
-            <input type="number" min={12} max={72} value={s.fonts.headingSize ?? 38} onChange={(e) => set((p) => ({ ...p, fonts: { ...p.fonts, headingSize: Number(e.target.value) || 38 } }))} />
+            <DraftSizeInput value={s.fonts.headingSize ?? 38} min={12} max={72} onCommit={(n) => set((p) => ({ ...p, fonts: { ...p.fonts, headingSize: n ?? 38 } }))} title="Heading size in pixels" />
           </div>
           <div className="field"><label>Body text size (px)</label>
-            <input type="number" min={12} max={24} value={s.fonts.bodySize ?? 16} onChange={(e) => set((p) => ({ ...p, fonts: { ...p.fonts, bodySize: Number(e.target.value) || 16 } }))} />
+            <DraftSizeInput value={s.fonts.bodySize ?? 16} min={12} max={24} onCommit={(n) => set((p) => ({ ...p, fonts: { ...p.fonts, bodySize: n ?? 16 } }))} title="Body text size in pixels" />
           </div>
           <div className="field"><label>Corner roundness (px)</label>
             <input type="text" value={String(s.fonts.radius)} onChange={(e) => set((p) => ({ ...p, fonts: { ...p.fonts, radius: Number(e.target.value) || 0 } }))} />
