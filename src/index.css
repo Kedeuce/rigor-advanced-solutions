@@ -17,7 +17,7 @@ button { font-family: inherit; cursor: pointer; }
 @media (min-width: 1024px) { .wrap { padding-left: max(48px, env(safe-area-inset-left)); padding-right: max(48px, env(safe-area-inset-right)); } }
 
 /* Header: RAS on its own row, nav on a separate row below */
-.site-header { border-bottom: 1px solid var(--border); padding: 18px 0 0; }
+.site-header { border-bottom: var(--breaker-thickness, 1px) solid var(--breaker-color, var(--border)); padding: 18px 0 0; }
 .brand-row { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; }
 .logo-mark { width: 52px; height: 52px; flex: 0 0 52px; border-radius: 12px; border: 1px solid var(--accent); display: grid; place-items: center; font-family: var(--heading-font); font-weight: 800; font-size: 20px; color: var(--accent); background: rgba(86, 200, 245, 0.08); }
 .brand-name { font-family: var(--heading-font); font-weight: 800; font-size: 26px; color: var(--heading); letter-spacing: 0.02em; }
@@ -45,7 +45,12 @@ button { font-family: inherit; cursor: pointer; }
 .gallery-item figcaption { padding: 12px 16px; font-size: 14px; color: var(--muted); }
 
 /* Placed images: one slot per page position, centred, sized by the admin */
-.slot-images { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin: 28px 0; }
+.slot-images { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin: 28px 0; clear: both; }
+/* Floated images: text flows around them. Capped so the text keeps room beside them.
+   The blocks after them (cards, forms, footer) start below the float, so it never covers them. */
+.slot-img.wrap-left { float: left; margin: 0 24px 16px 0; max-width: min(480px, 55%); }
+.slot-img.wrap-right { float: right; margin: 0 0 16px 24px; max-width: min(480px, 55%); }
+.cards, .steps, .two-col, .service-detail, form.consult, .closing, .site-footer { clear: both; }
 .slot-img { margin: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .slot-img img { display: block; width: 100%; height: auto; }
 .slot-img figcaption { padding: 12px 16px; font-size: 14px; color: var(--muted); }
@@ -65,7 +70,8 @@ button { font-family: inherit; cursor: pointer; }
 .crop-box { position: absolute; border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(2, 6, 16, 0.55); cursor: move; touch-action: none; }
 .crop-handle { position: absolute; right: -12px; bottom: -12px; width: 28px; height: 28px; background: var(--accent); border: 2px solid #fff; border-radius: 8px; cursor: nwse-resize; touch-action: none; }
 
-/* Service icons (inline SVG, glowing blue) */
+/* Section breaker: a divider line between sections, controlled in Admin */
+.section-breaker { border: none; border-top: var(--breaker-thickness, 1px) solid var(--breaker-color, var(--border)); margin: 12px 0 28px; }
 .service-icon { width: 52px; height: 52px; color: var(--accent); margin-bottom: 12px; filter: drop-shadow(0 0 8px rgba(147, 227, 253, 0.45)); }
 .service-icon svg { width: 100%; height: 100%; }
 
@@ -106,7 +112,7 @@ form.consult input, form.consult textarea { width: 100%; padding: 14px; border-r
 form.consult textarea { min-height: 120px; resize: vertical; }
 .btn { display: inline-block; background: var(--accent); color: var(--button-text); border: none; border-radius: 999px; padding: 14px 28px; font-size: 17px; font-weight: 700; min-height: 52px; margin-top: 20px; }
 .btn.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
-.site-footer { border-top: 1px solid var(--border); padding: 36px 0 48px; margin-top: 20px; }
+.site-footer { border-top: var(--breaker-thickness, 1px) solid var(--breaker-color, var(--border)); padding: 36px 0 48px; margin-top: 20px; }
 .site-footer h3 { font-size: 18px; }
 .site-footer .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
 @media (max-width: 700px) { .site-footer .cols { grid-template-columns: 1fr; } }
@@ -120,8 +126,20 @@ form.consult textarea { min-height: 120px; resize: vertical; }
 .admin-section h2 { font-size: 22px; }
 .field { margin-bottom: 14px; }
 .field label { display: block; font-weight: 600; color: var(--heading); font-size: 14px; margin-bottom: 5px; }
-.field input[type="text"], .field input[type="tel"], .field input[type="email"], .field textarea, .field select { width: 100%; padding: 11px 12px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); color: var(--body); font: inherit; font-size: 15px; }
+.field input[type="text"], .field input[type="tel"], .field input[type="email"], .field input[type="number"], .field textarea, .field select { width: 100%; padding: 11px 12px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); color: var(--body); font: inherit; font-size: 15px; }
 .field textarea { min-height: 70px; resize: vertical; }
+/* Per-text size box that sits beside a text field in Admin */
+.field-with-size { display: flex; gap: 8px; align-items: stretch; }
+.field-with-size > input[type="text"], .field-with-size > textarea { flex: 1; min-width: 0; width: auto; }
+.size-box { flex: 0 0 92px; display: flex; flex-direction: column; }
+.size-box > span { font-weight: 600; color: var(--heading); font-size: 14px; margin-bottom: 5px; }
+.size-box input[type="number"] { width: 100%; padding: 11px 8px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); color: var(--body); font: inherit; font-size: 15px; text-align: center; }
+/* Checkbox rows in Admin (section breaker toggles) */
+.check-field { display: flex; gap: 10px; align-items: center; font-weight: 600; color: var(--heading); font-size: 15px; margin-bottom: 12px; cursor: pointer; }
+.check-field input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 20px; accent-color: var(--accent); cursor: pointer; }
+/* Draggable photo thumbnails in the Admin image editor */
+.img-thumb[draggable="true"] { cursor: grab; }
+.img-thumb[draggable="true"]:active { cursor: grabbing; }
 .field-row { display: flex; gap: 12px; align-items: center; }
 .field-row input[type="color"] { width: 52px; height: 40px; padding: 2px; background: transparent; border: 1px solid var(--border); border-radius: 8px; }
 .sticky-actions { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--border); padding: 14px 0; display: flex; gap: 12px; flex-wrap: wrap; }

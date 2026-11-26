@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { DEFAULT_SETTINGS, DEFAULT_SLOT, FONT_CHOICES, IMAGE_SIZES, PLACEMENT_SLOTS, type ImageSize, type PageKey, type ServiceItem, type SiteImage, type SiteSettings } from './lib/settings'
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { DEFAULT_SETTINGS, DEFAULT_SLOT, FONT_CHOICES, IMAGE_SIZES, IMAGE_WRAPS, PLACEMENT_SLOTS, type BreakerSettings, type ImageSize, type ImageWrap, type PageKey, type ServiceItem, type SiteImage, type SiteSettings } from './lib/settings'
 import { loadSettings, saveSettings } from './lib/store'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { cropImageFile, rotatedImageDataUrl, uploadSiteImage, type CropRect } from './lib/images'
@@ -38,19 +38,45 @@ const SERVICE_ICONS: ReactNode[] = [
  * Images for one page at one placement slot, in list order.
  * Images saved before placement existed carry the page's old fixed slot,
  * so they keep showing exactly where they used to.
+ * Images with Text wrap set to Float left/right render floated, so the
+ * page text flows around them; the rest render in the centred gallery.
+ * (With includeFloated={false} the floated ones are left out — the Home
+ * top slot uses that, because its floated images render inside the hero
+ * text instead, where the hero headline and intro wrap around them.)
  */
-function SlotImages({ page, slot, images, className = '' }: { page: PageKey; slot: string; images: SiteImage[]; className?: string }) {
-  const list = (images ?? []).filter((im) => (im.position || DEFAULT_SLOT[page]) === slot)
+function FloatImages({ page, slot, images }: { page: PageKey; slot: string; images: SiteImage[] }) {
+  const list = (images ?? []).filter((im) => (im.position || DEFAULT_SLOT[page]) === slot && (im.wrap === 'left' || im.wrap === 'right'))
   if (list.length === 0) return null
   return (
-    <div className={`slot-images ${className}`}>
+    <>
       {list.map((img) => (
-        <figure className={`slot-img size-${img.size || 'medium'}`} key={img.id}>
+        <figure className={`slot-img size-${img.size || 'medium'} wrap-${img.wrap}`} key={img.id}>
           <img src={img.url} alt={img.alt || 'Image'} loading="lazy" />
           {img.caption ? <figcaption>{img.caption}</figcaption> : null}
         </figure>
       ))}
-    </div>
+    </>
+  )
+}
+
+function SlotImages({ page, slot, images, className = '', includeFloated = true }: { page: PageKey; slot: string; images: SiteImage[]; className?: string; includeFloated?: boolean }) {
+  const list = (images ?? []).filter((im) => (im.position || DEFAULT_SLOT[page]) === slot)
+  if (list.length === 0) return null
+  const normal = list.filter((im) => !im.wrap || im.wrap === 'none')
+  return (
+    <>
+      {includeFloated && <FloatImages page={page} slot={slot} images={images} />}
+      {normal.length > 0 && (
+        <div className={`slot-images ${className}`}>
+          {normal.map((img) => (
+            <figure className={`slot-img size-${img.size || 'medium'}`} key={img.id}>
+              <img src={img.url} alt={img.alt || 'Image'} loading="lazy" />
+              {img.caption ? <figcaption>{img.caption}</figcaption> : null}
+            </figure>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -59,15 +85,51 @@ const ADMIN_EMAILS = ['kebraphotography@gmail.com', 'kedeuce@gmail.com']
 
 type View = 'home' | 'services' | 'about' | 'contact' | 'admin'
 
-function Field({ label, value, onChange, textarea = false }: { label: string; value: string; onChange: (v: string) => void; textarea?: boolean }) {
+/**
+ * A text field in Admin. Pass sizeKey (plus sizeValue / sizePlaceholder /
+ * onSizeChange) and a small "Size" box appears right beside the text, so
+ * Dada can size that exact piece of text. Leaving the size box blank
+ * removes the per-text size and the text falls back to the general size.
+ */
+function Field({ label, value, onChange, textarea = false, sizeKey, sizeValue, sizePlaceholder, onSizeChange }: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  textarea?: boolean
+  sizeKey?: string
+  sizeValue?: number
+  sizePlaceholder?: number
+  onSizeChange?: (n: number | undefined) => void
+}) {
   return (
     <div className="field">
       <label>{label}</label>
-      {textarea ? (
-        <textarea value={value} onChange={(e) => onChange(e.target.value)} />
-      ) : (
-        <input type="text" value={value} onChange={(e) => onChange(e.target.value)} />
-      )}
+      <div className="field-with-size">
+        {textarea ? (
+          <textarea value={value} onChange={(e) => onChange(e.target.value)} />
+        ) : (
+          <input type="text" value={value} onChange={(e) => onChange(e.target.value)} />
+        )}
+        {sizeKey && onSizeChange && (
+          <div className="size-box">
+            <span>Size</span>
+            <input
+              type="number"
+              min={10}
+              max={96}
+              value={sizeValue ?? ''}
+              placeholder={sizePlaceholder !== undefined ? String(sizePlaceholder) : ''}
+              title="Size of this text in pixels — leave blank to use the general size"
+              onChange={(e) => {
+                const raw = e.target.value
+                if (raw === '') { onSizeChange(undefined); return }
+                const n = Number(raw)
+                if (Number.isFinite(n)) onSizeChange(Math.round(n))
+              }}
+            />
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -93,6 +155,41 @@ function SelectField({ label, value, onChange }: { label: string; value: string;
           <option key={f} value={f}>{f}</option>
         ))}
       </select>
+    </div>
+  )
+}
+
+function CheckField({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="check-field">
+      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} />
+      <span>{label}</span>
+    </label>
+  )
+}
+
+/**
+ * A size-only box for a text whose words are edited somewhere else
+ * (the big "Our Services" title on the Home page shares its words with
+ * the small Services-page label, so it gets its own size).
+ */
+function SizeField({ label, value, placeholder, onChange }: { label: string; value?: number; placeholder?: number; onChange: (n: number | undefined) => void }) {
+  return (
+    <div className="field"><label>{label}</label>
+      <input
+        type="number"
+        min={10}
+        max={96}
+        value={value ?? ''}
+        placeholder={placeholder !== undefined ? String(placeholder) : ''}
+        title="Size of this text in pixels — leave blank to use the general size"
+        onChange={(e) => {
+          const raw = e.target.value
+          if (raw === '') { onChange(undefined); return }
+          const n = Number(raw)
+          if (Number.isFinite(n)) onChange(Math.round(n))
+        }}
+      />
     </div>
   )
 }
@@ -280,6 +377,8 @@ export default function App() {
   const [addPosition, setAddPosition] = useState<Record<PageKey, string>>({ home: DEFAULT_SLOT.home, services: DEFAULT_SLOT.services, about: DEFAULT_SLOT.about, contact: DEFAULT_SLOT.contact })
   const [cropFile, setCropFile] = useState<File | null>(null)
   const [cropTarget, setCropTarget] = useState<{ kind: 'page'; page: PageKey; position: string } | { kind: 'hero' } | { kind: 'replace'; page: PageKey; id: string } | null>(null)
+  /** The image currently being dragged in an Images editor (HTML5 drag and drop). */
+  const [dragImg, setDragImg] = useState<{ page: PageKey; id: string } | null>(null)
 
   // Admin is hidden from public visitors: it opens only via the /admin
   // path (e.g. https://rigoradvancedsolutions.com/admin) or the #admin
@@ -431,6 +530,8 @@ export default function App() {
     '--radius': `${settings.fonts.radius}px`,
     '--heading-size': `${Math.min(72, Math.max(12, settings.fonts.headingSize ?? 38))}px`,
     '--body-size': `${Math.min(24, Math.max(12, settings.fonts.bodySize ?? 16))}px`,
+    '--breaker-color': settings.breakers?.color ?? '#0e5f8f',
+    '--breaker-thickness': `${Math.min(12, Math.max(1, settings.breakers?.thickness ?? 1))}px`,
   }) as CSSProperties, [settings])
 
   // Leaving Admin (sign out, or Preview Site) returns the address bar to
@@ -448,6 +549,38 @@ export default function App() {
   const updateService = (i: number, patch: Partial<ServiceItem>) =>
     set((s) => ({ ...s, services: { ...s.services, items: s.services.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) } }))
 
+  const headingBase = settings.fonts.headingSize ?? 38
+  const bodyBase = settings.fonts.bodySize ?? 16
+  /** Per-text size: a size saved for this exact text wins, otherwise the
+      general heading/body size is used. Clamped to 10–96px. */
+  const fs = (key: string, fallback: number) => {
+    const v = settings.fontSizes?.[key]
+    const n = typeof v === 'number' && v > 0 ? v : fallback
+    return Math.min(96, Math.max(10, n))
+  }
+  /** Section-title size, keeping the responsive clamp shape the site already uses. */
+  const titleSize = (key: string) => {
+    const f = fs(key, headingBase)
+    return `clamp(${Math.round(f * 0.68)}px, 4vw, ${f}px)`
+  }
+  /** Props to wire a Field's "Size" box to one text's per-text size. */
+  const sizeProps = (key: string, fallback: number) => ({
+    sizeKey: key,
+    sizeValue: settings.fontSizes?.[key],
+    sizePlaceholder: fallback,
+    onSizeChange: (n?: number) => setSize(key, n),
+  })
+  /** Save (or clear, when n is undefined) one text's per-text size. */
+  const setSize = (key: string, n?: number) => set((p) => {
+    const next = { ...(p.fontSizes ?? {}) }
+    if (n === undefined) delete next[key]
+    else next[key] = n
+    return { ...p, fontSizes: next }
+  })
+  /** Patch the section-breaker settings (colour, thickness, show/hide). */
+  const setBreaker = (patch: Partial<BreakerSettings>) =>
+    set((p) => ({ ...p, breakers: { ...DEFAULT_SETTINGS.breakers, ...(p.breakers ?? {}), ...patch } }))
+
   const newImageId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   const addImage = (page: PageKey, url: string, alt = '', position?: string) =>
     set((s) => ({ ...s, images: { ...s.images, [page]: [...(s.images?.[page] ?? []), { id: newImageId(), url, alt, caption: '', position: position || DEFAULT_SLOT[page], size: 'medium' as ImageSize }] } }))
@@ -462,6 +595,16 @@ export default function App() {
       const j = i + dir
       if (i < 0 || j < 0 || j >= list.length) return s
       ;[list[i], list[j]] = [list[j], list[i]]
+      return { ...s, images: { ...s.images, [page]: list } }
+    })
+  /** Drag and drop: move an image to a new spot in the same page's list. */
+  const moveImageTo = (page: PageKey, id: string, toIndex: number) =>
+    set((s) => {
+      const list = [...(s.images?.[page] ?? [])]
+      const from = list.findIndex((im) => im.id === id)
+      if (from < 0 || toIndex < 0 || toIndex >= list.length || from === toIndex) return s
+      const [item] = list.splice(from, 1)
+      list.splice(toIndex, 0, item)
       return { ...s, images: { ...s.images, [page]: list } }
     })
 
@@ -518,11 +661,25 @@ export default function App() {
     return (
       <section className="admin-section" key={`images-${page}`}>
         <h2>{label}</h2>
-        <p style={{ fontSize: 14, color: 'var(--muted)' }}>Add photos to this page and choose exactly where each one sits, how big it is, and what order they appear in. Uploading a photo lets you crop and rotate it first.</p>
+        <p style={{ fontSize: 14, color: 'var(--muted)' }}>Add photos to this page and choose exactly where each one sits, how big it is, and what order they appear in. Drag a photo by its thumbnail to move it up or down, or use the Move up / Move down buttons. Uploading a photo lets you crop and rotate it first.</p>
         {list.length === 0 && <p style={{ fontSize: 14, color: 'var(--muted)' }}>No images on this page yet.</p>}
         {list.map((img, i) => (
-          <div className="img-row" key={img.id}>
-            <img className="img-thumb" src={img.url} alt={img.alt || 'Image preview'} />
+          <div
+            className="img-row"
+            key={img.id}
+            style={dragImg?.id === img.id ? { opacity: 0.45 } : undefined}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
+            onDrop={(e) => { e.preventDefault(); if (dragImg && dragImg.page === page && dragImg.id !== img.id) moveImageTo(page, dragImg.id, i); setDragImg(null) }}
+          >
+            <img
+              className="img-thumb"
+              src={img.url}
+              alt={img.alt || 'Image preview'}
+              draggable
+              title="Drag this photo to move it up or down"
+              onDragStart={(e) => { setDragImg({ page, id: img.id }); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', img.id) } catch { /* some browsers need data set to start a drag */ } }}
+              onDragEnd={() => setDragImg(null)}
+            />
             <div className="img-row-fields">
               <Field label="Description (alt text)" value={img.alt} onChange={(v) => updateImage(page, img.id, { alt: v })} />
               <Field label="Caption under the image (optional)" value={img.caption ?? ''} onChange={(v) => updateImage(page, img.id, { caption: v })} />
@@ -538,6 +695,14 @@ export default function App() {
                 <label>Size</label>
                 <select value={img.size || 'medium'} onChange={(e) => updateImage(page, img.id, { size: e.target.value as ImageSize })}>
                   {IMAGE_SIZES.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Text wrap</label>
+                <select value={img.wrap || 'none'} onChange={(e) => updateImage(page, img.id, { wrap: e.target.value as ImageWrap })}>
+                  {IMAGE_WRAPS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
@@ -594,7 +759,7 @@ export default function App() {
 
   const s = settings
   const navBtn = (v: View, label: string) => (
-    <button key={v} className={view === v ? 'active' : ''} onClick={() => go(v)}>{label}</button>
+    <button key={v} className={view === v ? 'active' : ''} style={{ fontSize: fs(`nav.${v}`, 16) }} onClick={() => go(v)}>{label}</button>
   )
 
   let page: ReactNode = null
@@ -603,51 +768,55 @@ export default function App() {
     const heroSlotImages = (s.images?.home ?? []).filter((im) => (im.position || DEFAULT_SLOT.home) === 'hero')
     page = (
       <>
-        <div className="wrap"><SlotImages page="home" slot="top" images={s.images?.home ?? []} /></div>
+        <div className="wrap"><SlotImages page="home" slot="top" images={s.images?.home ?? []} includeFloated={false} /></div>
         <section className="hero">
           <div className="wrap hero-inner">
             <div className="hero-text">
-              <span className="eyebrow">{s.home.eyebrow}</span>
-              <h1>{s.home.headline}</h1>
-              <p className="subhead">{s.home.subhead}</p>
-              <p className="lede">{s.home.intro}</p>
-              <p className="gold-line">{s.home.goldLine}</p>
+              <FloatImages page="home" slot="top" images={s.images?.home ?? []} />
+              <span className="eyebrow" style={{ fontSize: fs('home.eyebrow', 13) }}>{s.home.eyebrow}</span>
+              <h1 style={{ fontSize: `clamp(34px, 6vw, ${fs('home.headline', Math.round(headingBase * 1.6))}px)` }}>{s.home.headline}</h1>
+              <p className="subhead" style={{ fontSize: `clamp(18px, 2.5vw, ${fs('home.subhead', 24)}px)` }}>{s.home.subhead}</p>
+              <p className="lede" style={{ fontSize: fs('home.intro', 18) }}>{s.home.intro}</p>
+              {s.breakers?.showGoldLine !== false && <p className="gold-line" style={{ fontSize: fs('home.goldLine', 18) }}>{s.home.goldLine}</p>}
             </div>
             {s.heroImage ? <img className="hero-img" src={s.heroImage} alt="Glowing network globe" /> : heroSlotImages.map((im) => <img key={im.id} className="hero-img" src={im.url} alt={im.alt || 'Image'} />)}
           </div>
         </section>
+        {s.breakers?.homeSections && <div className="wrap"><hr className="section-breaker" /></div>}
         <section className="section"><div className="wrap">
-          <span className="eyebrow">{s.home.servicesLabel}</span>
-          <h2 className="section-title">{s.services.label}</h2>
+          <span className="eyebrow" style={{ fontSize: fs('home.servicesLabel', 13) }}>{s.home.servicesLabel}</span>
+          <h2 className="section-title" style={{ fontSize: titleSize('home.servicesTitle') }}>{s.services.label}</h2>
           <div className="cards">
             {s.services.items.map((it, i) => (
               <article className="card" key={it.name}>
                 <div className="service-icon">{SERVICE_ICONS[i] ?? null}</div>
-                <h3>{it.name}</h3>
-                <p>{it.short}</p>
+                <h3 style={{ fontSize: fs(`services.items.${i}.name`, 21) }}>{it.name}</h3>
+                <p style={{ fontSize: fs(`services.items.${i}.short`, bodyBase) }}>{it.short}</p>
                 <button className="linklike" onClick={() => go('services')}>See full details</button>
               </article>
             ))}
           </div>
           <SlotImages page="home" slot="after-services" images={s.images?.home ?? []} />
         </div></section>
+        {s.breakers?.homeSections && <div className="wrap"><hr className="section-breaker" /></div>}
         <section className="section"><div className="wrap">
-          <h2 className="section-title">{s.home.whyTitle}</h2>
-          <p>{s.home.whyIntro}</p>
+          <h2 className="section-title" style={{ fontSize: titleSize('home.whyTitle') }}>{s.home.whyTitle}</h2>
+          <p style={{ fontSize: fs('home.whyIntro', bodyBase) }}>{s.home.whyIntro}</p>
           <div className="cards">
-            {s.home.whyItems.map((w) => (
-              <article className="card" key={w.title}><h3>{w.title}</h3><p>{w.text}</p></article>
+            {s.home.whyItems.map((w, i) => (
+              <article className="card" key={w.title}><h3 style={{ fontSize: fs(`home.whyItems.${i}.title`, 21) }}>{w.title}</h3><p style={{ fontSize: fs(`home.whyItems.${i}.text`, bodyBase) }}>{w.text}</p></article>
             ))}
           </div>
         </div></section>
+        {s.breakers?.homeSections && <div className="wrap"><hr className="section-breaker" /></div>}
         <section className="section"><div className="wrap">
-          <h2 className="section-title">{s.home.processTitle}</h2>
-          <p>{s.home.processIntro}</p>
+          <h2 className="section-title" style={{ fontSize: titleSize('home.processTitle') }}>{s.home.processTitle}</h2>
+          <p style={{ fontSize: fs('home.processIntro', bodyBase) }}>{s.home.processIntro}</p>
           <div className="steps">
             {s.home.processSteps.map((st, i) => (
               <article className="card" key={st.title}>
                 <div className="step-num">{i + 1}</div>
-                <h3>{st.title}</h3><p>{st.text}</p>
+                <h3 style={{ fontSize: fs(`home.processSteps.${i}.title`, 21) }}>{st.title}</h3><p style={{ fontSize: fs(`home.processSteps.${i}.text`, bodyBase) }}>{st.text}</p>
               </article>
             ))}
           </div>
@@ -662,19 +831,22 @@ export default function App() {
     page = (
       <section className="section" style={{ paddingBottom: 84 }}><div className="wrap">
         <SlotImages page="services" slot="top" images={s.images?.services ?? []} />
-        <span className="eyebrow">{s.services.label}</span>
-        <h1>{s.services.title}</h1>
-        <p style={{ maxWidth: 720, fontSize: 18 }}>{s.services.intro}</p>
+        <span className="eyebrow" style={{ fontSize: fs('services.label', 13) }}>{s.services.label}</span>
+        <h1 style={{ fontSize: fs('services.title', headingBase) }}>{s.services.title}</h1>
+        <p style={{ maxWidth: 720, fontSize: fs('services.intro', 18) }}>{s.services.intro}</p>
         {s.services.items.map((it, i) => (
-          <article className="service-detail" key={it.name}>
-            <div className="service-icon">{SERVICE_ICONS[i] ?? null}</div>
-            <h2>{it.name}</h2>
-            <p>{it.detail}</p>
-            <h3 style={{ color: 'var(--gold)' }}>{s.services.whoHeading}</h3>
-            <p>{it.whoFor}</p>
-            <h3>{s.services.includesHeading}</h3>
-            <ul>{it.includes.map((inc) => <li key={inc}>{inc}</li>)}</ul>
-          </article>
+          <Fragment key={it.name}>
+            <article className="service-detail">
+              <div className="service-icon">{SERVICE_ICONS[i] ?? null}</div>
+              <h2 style={{ fontSize: fs(`services.items.${i}.name`, Math.round(headingBase * 0.63)) }}>{it.name}</h2>
+              <p style={{ fontSize: fs(`services.items.${i}.detail`, bodyBase) }}>{it.detail}</p>
+              <h3 style={{ color: 'var(--gold)', fontSize: fs('services.whoHeading', 19) }}>{s.services.whoHeading}</h3>
+              <p style={{ fontSize: fs(`services.items.${i}.whoFor`, bodyBase) }}>{it.whoFor}</p>
+              <h3 style={{ fontSize: fs('services.includesHeading', 19) }}>{s.services.includesHeading}</h3>
+              <ul style={{ fontSize: fs(`services.items.${i}.includes`, bodyBase) }}>{it.includes.map((inc) => <li key={inc}>{inc}</li>)}</ul>
+            </article>
+            {s.breakers?.servicesSections && i < s.services.items.length - 1 && <hr className="section-breaker" />}
+          </Fragment>
         ))}
         <SlotImages page="services" slot="after-details" images={s.images?.services ?? []} />
         <SlotImages page="services" slot="bottom" images={s.images?.services ?? []} />
@@ -686,21 +858,23 @@ export default function App() {
     page = (
       <section className="section"><div className="wrap">
         <SlotImages page="about" slot="top" images={s.images?.about ?? []} />
-        <span className="eyebrow">{s.about.label}</span>
-        <h1>{s.about.title}</h1>
-        <p style={{ maxWidth: 720, fontSize: 18 }}>{s.about.intro}</p>
-        <p style={{ fontSize: 20, color: 'var(--accent)', fontWeight: 600 }}>{s.tagline}</p>
+        <span className="eyebrow" style={{ fontSize: fs('about.label', 13) }}>{s.about.label}</span>
+        <h1 style={{ fontSize: fs('about.title', headingBase) }}>{s.about.title}</h1>
+        <p style={{ maxWidth: 720, fontSize: fs('about.intro', 18) }}>{s.about.intro}</p>
+        <p style={{ fontSize: fs('tagline', 20), color: 'var(--accent)', fontWeight: 600 }}>{s.tagline}</p>
         <div className="two-col" style={{ marginTop: 28 }}>
-          <article className="info-card"><h2>{s.about.missionTitle}</h2><p>{s.about.missionText}</p></article>
-          <article className="info-card"><h2>{s.about.promiseTitle}</h2><p>{s.about.promiseText}</p></article>
+          <article className="info-card"><h2 style={{ fontSize: fs('about.missionTitle', Math.round(headingBase * 0.63)) }}>{s.about.missionTitle}</h2><p style={{ fontSize: fs('about.missionText', bodyBase) }}>{s.about.missionText}</p></article>
+          <article className="info-card"><h2 style={{ fontSize: fs('about.promiseTitle', Math.round(headingBase * 0.63)) }}>{s.about.promiseTitle}</h2><p style={{ fontSize: fs('about.promiseText', bodyBase) }}>{s.about.promiseText}</p></article>
         </div>
         <SlotImages page="about" slot="after-story" images={s.images?.about ?? []} />
-        <h2 className="section-title" style={{ marginTop: 40 }}>{s.about.valuesTitle}</h2>
+        {s.breakers?.aboutSections && <hr className="section-breaker" />}
+        <h2 className="section-title" style={{ marginTop: 40, fontSize: titleSize('about.valuesTitle') }}>{s.about.valuesTitle}</h2>
         <div className="cards">
-          {s.about.values.map((v) => (
-            <article className="card" key={v.title}><h3>{v.title}</h3><p>{v.text}</p></article>
+          {s.about.values.map((v, i) => (
+            <article className="card" key={v.title}><h3 style={{ fontSize: fs(`about.values.${i}.title`, 21) }}>{v.title}</h3><p style={{ fontSize: fs(`about.values.${i}.text`, bodyBase) }}>{v.text}</p></article>
           ))}
         </div>
+        {s.breakers?.aboutSections && <hr className="section-breaker" />}
         <SlotImages page="about" slot="after-values" images={s.images?.about ?? []} />
         <SlotImages page="about" slot="bottom" images={s.images?.about ?? []} />
       </div></section>
@@ -711,44 +885,46 @@ export default function App() {
     page = (
       <section className="section"><div className="wrap">
         <SlotImages page="contact" slot="top" images={s.images?.contact ?? []} />
-        <span className="eyebrow">{s.contact.label}</span>
-        <h1>{s.contact.title}</h1>
-        <p style={{ maxWidth: 720, fontSize: 18 }}>{s.contact.intro}</p>
+        <span className="eyebrow" style={{ fontSize: fs('contact.label', 13) }}>{s.contact.label}</span>
+        <h1 style={{ fontSize: fs('contact.title', headingBase) }}>{s.contact.title}</h1>
+        <p style={{ maxWidth: 720, fontSize: fs('contact.intro', 18) }}>{s.contact.intro}</p>
         <div className="two-col" style={{ marginTop: 28 }}>
           <article className="info-card">
-            <h2>{s.contact.phoneCardTitle}</h2>
-            <a href={`tel:${s.phoneTel}`}>{s.phoneDisplay}</a>
-            <p>{s.contact.phoneCardNote}</p>
+            <h2 style={{ fontSize: fs('contact.phoneCardTitle', Math.round(headingBase * 0.63)) }}>{s.contact.phoneCardTitle}</h2>
+            <a href={`tel:${s.phoneTel}`} style={{ fontSize: fs('business.phoneDisplay', 22) }}>{s.phoneDisplay}</a>
+            <p style={{ fontSize: fs('contact.phoneCardNote', bodyBase) }}>{s.contact.phoneCardNote}</p>
           </article>
           <article className="info-card">
-            <h2>{s.contact.locationCardTitle}</h2>
-            <p style={{ fontSize: 22, fontWeight: 700, color: 'var(--heading)' }}>{s.location}</p>
-            <p>{s.contact.locationCardNote}</p>
+            <h2 style={{ fontSize: fs('contact.locationCardTitle', Math.round(headingBase * 0.63)) }}>{s.contact.locationCardTitle}</h2>
+            <p style={{ fontSize: fs('contact.location', 22), fontWeight: 700, color: 'var(--heading)' }}>{s.location}</p>
+            <p style={{ fontSize: fs('contact.locationCardNote', bodyBase) }}>{s.contact.locationCardNote}</p>
           </article>
         </div>
+        {s.breakers?.contactSections && <hr className="section-breaker" />}
         <SlotImages page="contact" slot="after-info" images={s.images?.contact ?? []} />
         <form className="consult" onSubmit={(e) => { e.preventDefault(); setSubmitted(true) }}>
-          <h2>{s.contact.formTitle}</h2>
-          <label>{s.contact.nameLabel}</label>
+          <h2 style={{ fontSize: fs('contact.formTitle', 24) }}>{s.contact.formTitle}</h2>
+          <label style={{ fontSize: fs('contact.nameLabel', bodyBase) }}>{s.contact.nameLabel}</label>
           <input type="text" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <label>{s.contact.emailLabel}</label>
+          <label style={{ fontSize: fs('contact.emailLabel', bodyBase) }}>{s.contact.emailLabel}</label>
           <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          <label>{s.contact.phoneLabel}</label>
+          <label style={{ fontSize: fs('contact.phoneLabel', bodyBase) }}>{s.contact.phoneLabel}</label>
           <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          <label>{s.contact.messageLabel}</label>
+          <label style={{ fontSize: fs('contact.messageLabel', bodyBase) }}>{s.contact.messageLabel}</label>
           <textarea required value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} />
           {submitted ? (
-            <p style={{ marginTop: 20, color: 'var(--accent)', fontWeight: 600 }}>{s.contact.thankYou}</p>
+            <p style={{ marginTop: 20, color: 'var(--accent)', fontWeight: 600, fontSize: fs('contact.thankYou', bodyBase) }}>{s.contact.thankYou}</p>
           ) : (
-            <button className="btn" type="submit">{s.contact.submitLabel}</button>
+            <button className="btn" type="submit" style={{ fontSize: fs('contact.submitLabel', 17) }}>{s.contact.submitLabel}</button>
           )}
-          {submitted && <a className="btn secondary" href={`tel:${s.phoneTel}`} style={{ marginLeft: 12, textDecoration: 'none' }}>{s.contact.callButtonLabel}</a>}
+          {submitted && <a className="btn secondary" href={`tel:${s.phoneTel}`} style={{ marginLeft: 12, textDecoration: 'none', fontSize: fs('contact.callButtonLabel', 17) }}>{s.contact.callButtonLabel}</a>}
         </form>
         <SlotImages page="contact" slot="after-form" images={s.images?.contact ?? []} />
+        {s.breakers?.contactSections && <hr className="section-breaker" />}
         <div className="closing">
-          <h2>{s.contact.closingTitle}</h2>
-          <p>{s.contact.closingText}</p>
-          <a className="btn" href={`tel:${s.phoneTel}`} style={{ textDecoration: 'none' }}>{s.contact.callButtonLabel}</a>
+          <h2 style={{ fontSize: `clamp(24px, 4vw, ${fs('contact.closingTitle', Math.round(headingBase * 0.9))}px)` }}>{s.contact.closingTitle}</h2>
+          <p style={{ fontSize: fs('contact.closingText', bodyBase) }}>{s.contact.closingText}</p>
+          <a className="btn" href={`tel:${s.phoneTel}`} style={{ textDecoration: 'none', fontSize: fs('contact.callButtonLabel', 17) }}>{s.contact.callButtonLabel}</a>
         </div>
         <SlotImages page="contact" slot="bottom" images={s.images?.contact ?? []} />
       </div></section>
@@ -838,15 +1014,15 @@ export default function App() {
         </section>
 
         <section className="admin-section"><h2>Business details</h2>
-          <Field label="Business name" value={s.businessName} onChange={(v) => set((p) => ({ ...p, businessName: v }))} />
-          <Field label="Tagline" value={s.tagline} onChange={(v) => set((p) => ({ ...p, tagline: v }))} />
-          <Field label="Phone, as shown" value={s.phoneDisplay} onChange={(v) => set((p) => ({ ...p, phoneDisplay: v }))} />
+          <Field label="Business name" value={s.businessName} onChange={(v) => set((p) => ({ ...p, businessName: v }))} {...sizeProps('brand.name', 26)} />
+          <Field label="Tagline" value={s.tagline} onChange={(v) => set((p) => ({ ...p, tagline: v }))} {...sizeProps('tagline', 16)} />
+          <Field label="Phone, as shown" value={s.phoneDisplay} onChange={(v) => set((p) => ({ ...p, phoneDisplay: v }))} {...sizeProps('business.phoneDisplay', 16)} />
           <Field label="Phone, for tap to call (digits only, with country code)" value={s.phoneTel} onChange={(v) => set((p) => ({ ...p, phoneTel: v }))} />
-          <Field label="Location" value={s.location} onChange={(v) => set((p) => ({ ...p, location: v }))} />
-          <Field label="Menu label, Home" value={s.nav.home} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, home: v } }))} />
-          <Field label="Menu label, Services" value={s.nav.services} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, services: v } }))} />
-          <Field label="Menu label, About" value={s.nav.about} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, about: v } }))} />
-          <Field label="Menu label, Contact" value={s.nav.contact} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, contact: v } }))} />
+          <Field label="Location" value={s.location} onChange={(v) => set((p) => ({ ...p, location: v }))} {...sizeProps('contact.location', 16)} />
+          <Field label="Menu label, Home" value={s.nav.home} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, home: v } }))} {...sizeProps('nav.home', 16)} />
+          <Field label="Menu label, Services" value={s.nav.services} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, services: v } }))} {...sizeProps('nav.services', 16)} />
+          <Field label="Menu label, About" value={s.nav.about} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, about: v } }))} {...sizeProps('nav.about', 16)} />
+          <Field label="Menu label, Contact" value={s.nav.contact} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, contact: v } }))} {...sizeProps('nav.contact', 16)} />
         </section>
 
         <section className="admin-section"><h2>Design, fonts and colours</h2>
@@ -872,12 +1048,27 @@ export default function App() {
           <ColorField label="Gold highlight colour" value={s.colors.gold} onChange={(v) => set((p) => ({ ...p, colors: { ...p.colors, gold: v } }))} />
         </section>
 
+        <section className="admin-section"><h2>Section breakers</h2>
+          <p style={{ fontSize: 14, color: 'var(--muted)' }}>The lines that break up the page: under the header, above the footer, the gold line under the Home intro, and divider lines between sections. The gold line's colour is the Gold highlight colour in Design, and its size is set beside its text in the Home page section.</p>
+          <ColorField label="Divider line colour" value={s.breakers?.color ?? '#0e5f8f'} onChange={(v) => setBreaker({ color: v })} />
+          <div className="field"><label>Divider line thickness (px)</label>
+            <input type="number" min={1} max={12} value={s.breakers?.thickness ?? 1} onChange={(e) => setBreaker({ thickness: Number(e.target.value) || 1 })} />
+          </div>
+          <CheckField label="Show the line under the header" value={s.breakers?.showHeader ?? true} onChange={(v) => setBreaker({ showHeader: v })} />
+          <CheckField label="Show the line above the footer" value={s.breakers?.showFooter ?? true} onChange={(v) => setBreaker({ showFooter: v })} />
+          <CheckField label="Show the gold line under the Home intro" value={s.breakers?.showGoldLine ?? true} onChange={(v) => setBreaker({ showGoldLine: v })} />
+          <CheckField label="Show divider lines between the sections on the Home page" value={s.breakers?.homeSections ?? false} onChange={(v) => setBreaker({ homeSections: v })} />
+          <CheckField label="Show divider lines between the service details on the Services page" value={s.breakers?.servicesSections ?? false} onChange={(v) => setBreaker({ servicesSections: v })} />
+          <CheckField label="Show divider lines between the blocks on the About page" value={s.breakers?.aboutSections ?? false} onChange={(v) => setBreaker({ aboutSections: v })} />
+          <CheckField label="Show divider lines between the blocks on the Contact page" value={s.breakers?.contactSections ?? false} onChange={(v) => setBreaker({ contactSections: v })} />
+        </section>
+
         <section className="admin-section"><h2>Home page</h2>
-          <Field label="Eyebrow" value={s.home.eyebrow} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, eyebrow: v } }))} />
-          <Field label="Headline" value={s.home.headline} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, headline: v } }))} />
-          <Field label="Subhead" value={s.home.subhead} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, subhead: v } }))} />
-          <Field label="Intro" value={s.home.intro} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, intro: v } }))} />
-          <Field label="Gold line under the intro" value={s.home.goldLine} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, goldLine: v } }))} />
+          <Field label="Eyebrow" value={s.home.eyebrow} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, eyebrow: v } }))} {...sizeProps('home.eyebrow', 13)} />
+          <Field label="Headline" value={s.home.headline} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, headline: v } }))} {...sizeProps('home.headline', Math.round(headingBase * 1.6))} />
+          <Field label="Subhead" value={s.home.subhead} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, subhead: v } }))} {...sizeProps('home.subhead', 24)} />
+          <Field label="Intro" value={s.home.intro} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, intro: v } }))} {...sizeProps('home.intro', 18)} />
+          <Field label="Gold line under the intro" value={s.home.goldLine} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, goldLine: v } }))} {...sizeProps('home.goldLine', 18)} />
           <Field label="Hero image (the globe on the home page — leave blank to hide it)" value={s.heroImage} onChange={(v) => set((p) => ({ ...p, heroImage: v }))} />
           {s.heroImage ? <img src={s.heroImage} alt="Hero preview" style={{ width: 120, height: 120, objectFit: 'contain', borderRadius: 12, border: '1px solid var(--border)', marginBottom: 14 }} /> : null}
           <div className="img-add" style={{ marginTop: 0, marginBottom: 14 }}>
@@ -889,21 +1080,22 @@ export default function App() {
           {cropFile && cropTarget?.kind === 'hero' && (
             <ImageCropper file={cropFile} onDone={(f) => void handleCropDone(f)} onCancel={() => { setCropFile(null); setCropTarget(null) }} />
           )}
-          <Field label="Services label" value={s.home.servicesLabel} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, servicesLabel: v } }))} />
-          <Field label="Why Rigor title" value={s.home.whyTitle} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyTitle: v } }))} />
-          <Field label="Why Rigor intro" value={s.home.whyIntro} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyIntro: v } }))} />
+          <Field label="Services label" value={s.home.servicesLabel} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, servicesLabel: v } }))} {...sizeProps('home.servicesLabel', 13)} />
+          <SizeField label="Services title size — the big “Our Services” heading on the Home page (px)" value={settings.fontSizes?.['home.servicesTitle']} placeholder={headingBase} onChange={(n) => setSize('home.servicesTitle', n)} />
+          <Field label="Why Rigor title" value={s.home.whyTitle} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyTitle: v } }))} {...sizeProps('home.whyTitle', headingBase)} />
+          <Field label="Why Rigor intro" value={s.home.whyIntro} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyIntro: v } }))} {...sizeProps('home.whyIntro', bodyBase)} />
           {s.home.whyItems.map((w, i) => (
             <div key={i}>
-              <Field label={`Why item ${i + 1}, title`} value={w.title} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyItems: p.home.whyItems.map((x, j) => (j === i ? { ...x, title: v } : x)) } }))} />
-              <Field label={`Why item ${i + 1}, text`} value={w.text} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyItems: p.home.whyItems.map((x, j) => (j === i ? { ...x, text: v } : x)) } }))} />
+              <Field label={`Why item ${i + 1}, title`} value={w.title} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyItems: p.home.whyItems.map((x, j) => (j === i ? { ...x, title: v } : x)) } }))} {...sizeProps(`home.whyItems.${i}.title`, 21)} />
+              <Field label={`Why item ${i + 1}, text`} value={w.text} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyItems: p.home.whyItems.map((x, j) => (j === i ? { ...x, text: v } : x)) } }))} {...sizeProps(`home.whyItems.${i}.text`, bodyBase)} />
             </div>
           ))}
-          <Field label="How We Work title" value={s.home.processTitle} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, processTitle: v } }))} />
-          <Field label="How We Work intro" value={s.home.processIntro} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, processIntro: v } }))} />
+          <Field label="How We Work title" value={s.home.processTitle} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, processTitle: v } }))} {...sizeProps('home.processTitle', headingBase)} />
+          <Field label="How We Work intro" value={s.home.processIntro} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, processIntro: v } }))} {...sizeProps('home.processIntro', bodyBase)} />
           {s.home.processSteps.map((st, i) => (
             <div key={i}>
-              <Field label={`Step ${i + 1}, title`} value={st.title} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, processSteps: p.home.processSteps.map((x, j) => (j === i ? { ...x, title: v } : x)) } }))} />
-              <Field label={`Step ${i + 1}, text`} value={st.text} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, processSteps: p.home.processSteps.map((x, j) => (j === i ? { ...x, text: v } : x)) } }))} />
+              <Field label={`Step ${i + 1}, title`} value={st.title} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, processSteps: p.home.processSteps.map((x, j) => (j === i ? { ...x, title: v } : x)) } }))} {...sizeProps(`home.processSteps.${i}.title`, 21)} />
+              <Field label={`Step ${i + 1}, text`} value={st.text} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, processSteps: p.home.processSteps.map((x, j) => (j === i ? { ...x, text: v } : x)) } }))} {...sizeProps(`home.processSteps.${i}.text`, bodyBase)} />
             </div>
           ))}
         </section>
@@ -911,18 +1103,18 @@ export default function App() {
         {imageEditor('home', 'Home page images')}
 
         <section className="admin-section"><h2>Services page</h2>
-          <Field label="Services label" value={s.services.label} onChange={(v) => set((p) => ({ ...p, services: { ...p.services, label: v } }))} />
-          <Field label="Services title" value={s.services.title} textarea onChange={(v) => set((p) => ({ ...p, services: { ...p.services, title: v } }))} />
-          <Field label="Services intro" value={s.services.intro} textarea onChange={(v) => set((p) => ({ ...p, services: { ...p.services, intro: v } }))} />
-          <Field label="Who it is for, heading" value={s.services.whoHeading} onChange={(v) => set((p) => ({ ...p, services: { ...p.services, whoHeading: v } }))} />
-          <Field label="What it includes, heading" value={s.services.includesHeading} onChange={(v) => set((p) => ({ ...p, services: { ...p.services, includesHeading: v } }))} />
+          <Field label="Services label" value={s.services.label} onChange={(v) => set((p) => ({ ...p, services: { ...p.services, label: v } }))} {...sizeProps('services.label', 13)} />
+          <Field label="Services title" value={s.services.title} textarea onChange={(v) => set((p) => ({ ...p, services: { ...p.services, title: v } }))} {...sizeProps('services.title', headingBase)} />
+          <Field label="Services intro" value={s.services.intro} textarea onChange={(v) => set((p) => ({ ...p, services: { ...p.services, intro: v } }))} {...sizeProps('services.intro', 18)} />
+          <Field label="Who it is for, heading" value={s.services.whoHeading} onChange={(v) => set((p) => ({ ...p, services: { ...p.services, whoHeading: v } }))} {...sizeProps('services.whoHeading', 19)} />
+          <Field label="What it includes, heading" value={s.services.includesHeading} onChange={(v) => set((p) => ({ ...p, services: { ...p.services, includesHeading: v } }))} {...sizeProps('services.includesHeading', 19)} />
           {s.services.items.map((it, i) => (
             <div key={it.name} style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
-              <Field label={`Service ${i + 1}, name`} value={it.name} onChange={(v) => updateService(i, { name: v })} />
-              <Field label={`Service ${i + 1}, short text`} value={it.short} textarea onChange={(v) => updateService(i, { short: v })} />
-              <Field label={`Service ${i + 1}, full detail`} value={it.detail} textarea onChange={(v) => updateService(i, { detail: v })} />
-              <Field label={`Service ${i + 1}, who it is for`} value={it.whoFor} textarea onChange={(v) => updateService(i, { whoFor: v })} />
-              <Field label={`Service ${i + 1}, includes (comma separated)`} value={it.includes.join(', ')} onChange={(v) => updateService(i, { includes: v.split(',').map((x) => x.trim()).filter(Boolean) })} />
+              <Field label={`Service ${i + 1}, name`} value={it.name} onChange={(v) => updateService(i, { name: v })} {...sizeProps(`services.items.${i}.name`, 21)} />
+              <Field label={`Service ${i + 1}, short text`} value={it.short} textarea onChange={(v) => updateService(i, { short: v })} {...sizeProps(`services.items.${i}.short`, bodyBase)} />
+              <Field label={`Service ${i + 1}, full detail`} value={it.detail} textarea onChange={(v) => updateService(i, { detail: v })} {...sizeProps(`services.items.${i}.detail`, bodyBase)} />
+              <Field label={`Service ${i + 1}, who it is for`} value={it.whoFor} textarea onChange={(v) => updateService(i, { whoFor: v })} {...sizeProps(`services.items.${i}.whoFor`, bodyBase)} />
+              <Field label={`Service ${i + 1}, includes (comma separated)`} value={it.includes.join(', ')} onChange={(v) => updateService(i, { includes: v.split(',').map((x) => x.trim()).filter(Boolean) })} {...sizeProps(`services.items.${i}.includes`, bodyBase)} />
             </div>
           ))}
         </section>
@@ -930,18 +1122,18 @@ export default function App() {
         {imageEditor('services', 'Services page images')}
 
         <section className="admin-section"><h2>About page</h2>
-          <Field label="About label" value={s.about.label} onChange={(v) => set((p) => ({ ...p, about: { ...p.about, label: v } }))} />
-          <Field label="About title" value={s.about.title} textarea onChange={(v) => set((p) => ({ ...p, about: { ...p.about, title: v } }))} />
-          <Field label="About intro" value={s.about.intro} textarea onChange={(v) => set((p) => ({ ...p, about: { ...p.about, intro: v } }))} />
-          <Field label="Mission title" value={s.about.missionTitle} onChange={(v) => set((p) => ({ ...p, about: { ...p.about, missionTitle: v } }))} />
-          <Field label="Mission text" value={s.about.missionText} textarea onChange={(v) => set((p) => ({ ...p, about: { ...p.about, missionText: v } }))} />
-          <Field label="Promise title" value={s.about.promiseTitle} onChange={(v) => set((p) => ({ ...p, about: { ...p.about, promiseTitle: v } }))} />
-          <Field label="Promise text" value={s.about.promiseText} textarea onChange={(v) => set((p) => ({ ...p, about: { ...p.about, promiseText: v } }))} />
-          <Field label="Values title" value={s.about.valuesTitle} onChange={(v) => set((p) => ({ ...p, about: { ...p.about, valuesTitle: v } }))} />
+          <Field label="About label" value={s.about.label} onChange={(v) => set((p) => ({ ...p, about: { ...p.about, label: v } }))} {...sizeProps('about.label', 13)} />
+          <Field label="About title" value={s.about.title} textarea onChange={(v) => set((p) => ({ ...p, about: { ...p.about, title: v } }))} {...sizeProps('about.title', headingBase)} />
+          <Field label="About intro" value={s.about.intro} textarea onChange={(v) => set((p) => ({ ...p, about: { ...p.about, intro: v } }))} {...sizeProps('about.intro', 18)} />
+          <Field label="Mission title" value={s.about.missionTitle} onChange={(v) => set((p) => ({ ...p, about: { ...p.about, missionTitle: v } }))} {...sizeProps('about.missionTitle', Math.round(headingBase * 0.63))} />
+          <Field label="Mission text" value={s.about.missionText} textarea onChange={(v) => set((p) => ({ ...p, about: { ...p.about, missionText: v } }))} {...sizeProps('about.missionText', bodyBase)} />
+          <Field label="Promise title" value={s.about.promiseTitle} onChange={(v) => set((p) => ({ ...p, about: { ...p.about, promiseTitle: v } }))} {...sizeProps('about.promiseTitle', Math.round(headingBase * 0.63))} />
+          <Field label="Promise text" value={s.about.promiseText} textarea onChange={(v) => set((p) => ({ ...p, about: { ...p.about, promiseText: v } }))} {...sizeProps('about.promiseText', bodyBase)} />
+          <Field label="Values title" value={s.about.valuesTitle} onChange={(v) => set((p) => ({ ...p, about: { ...p.about, valuesTitle: v } }))} {...sizeProps('about.valuesTitle', headingBase)} />
           {s.about.values.map((v, i) => (
             <div key={i}>
-              <Field label={`Value ${i + 1}, title`} value={v.title} onChange={(val) => set((p) => ({ ...p, about: { ...p.about, values: p.about.values.map((x, j) => (j === i ? { ...x, title: val } : x)) } }))} />
-              <Field label={`Value ${i + 1}, text`} value={v.text} textarea onChange={(val) => set((p) => ({ ...p, about: { ...p.about, values: p.about.values.map((x, j) => (j === i ? { ...x, text: val } : x)) } }))} />
+              <Field label={`Value ${i + 1}, title`} value={v.title} onChange={(val) => set((p) => ({ ...p, about: { ...p.about, values: p.about.values.map((x, j) => (j === i ? { ...x, title: val } : x)) } }))} {...sizeProps(`about.values.${i}.title`, 21)} />
+              <Field label={`Value ${i + 1}, text`} value={v.text} textarea onChange={(val) => set((p) => ({ ...p, about: { ...p.about, values: p.about.values.map((x, j) => (j === i ? { ...x, text: val } : x)) } }))} {...sizeProps(`about.values.${i}.text`, bodyBase)} />
             </div>
           ))}
         </section>
@@ -949,26 +1141,26 @@ export default function App() {
         {imageEditor('about', 'About page images')}
 
         <section className="admin-section"><h2>Contact page and footer</h2>
-          <Field label="Contact label" value={s.contact.label} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, label: v } }))} />
-          <Field label="Contact title" value={s.contact.title} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, title: v } }))} />
-          <Field label="Contact intro" value={s.contact.intro} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, intro: v } }))} />
-          <Field label="Phone card title" value={s.contact.phoneCardTitle} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, phoneCardTitle: v } }))} />
-          <Field label="Note under the phone number" value={s.contact.phoneCardNote} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, phoneCardNote: v } }))} />
-          <Field label="Location card title" value={s.contact.locationCardTitle} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, locationCardTitle: v } }))} />
-          <Field label="Location card note" value={s.contact.locationCardNote} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, locationCardNote: v } }))} />
-          <Field label="Form title" value={s.contact.formTitle} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, formTitle: v } }))} />
-          <Field label="Name label" value={s.contact.nameLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, nameLabel: v } }))} />
-          <Field label="Email label" value={s.contact.emailLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, emailLabel: v } }))} />
-          <Field label="Phone label" value={s.contact.phoneLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, phoneLabel: v } }))} />
-          <Field label="Message label" value={s.contact.messageLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, messageLabel: v } }))} />
-          <Field label="Submit button" value={s.contact.submitLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, submitLabel: v } }))} />
-          <Field label="Thank you message" value={s.contact.thankYou} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, thankYou: v } }))} />
-          <Field label="Closing title" value={s.contact.closingTitle} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, closingTitle: v } }))} />
-          <Field label="Closing text" value={s.contact.closingText} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, closingText: v } }))} />
-          <Field label="Call button word" value={s.contact.callButtonLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, callButtonLabel: v } }))} />
-          <Field label="Footer Explore heading" value={s.footer.exploreTitle} onChange={(v) => set((p) => ({ ...p, footer: { ...p.footer, exploreTitle: v } }))} />
-          <Field label="Footer Contact heading" value={s.footer.contactTitle} onChange={(v) => set((p) => ({ ...p, footer: { ...p.footer, contactTitle: v } }))} />
-          <Field label="Copyright line" value={s.footer.copyright} onChange={(v) => set((p) => ({ ...p, footer: { ...p.footer, copyright: v } }))} />
+          <Field label="Contact label" value={s.contact.label} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, label: v } }))} {...sizeProps('contact.label', 13)} />
+          <Field label="Contact title" value={s.contact.title} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, title: v } }))} {...sizeProps('contact.title', headingBase)} />
+          <Field label="Contact intro" value={s.contact.intro} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, intro: v } }))} {...sizeProps('contact.intro', 18)} />
+          <Field label="Phone card title" value={s.contact.phoneCardTitle} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, phoneCardTitle: v } }))} {...sizeProps('contact.phoneCardTitle', Math.round(headingBase * 0.63))} />
+          <Field label="Note under the phone number" value={s.contact.phoneCardNote} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, phoneCardNote: v } }))} {...sizeProps('contact.phoneCardNote', bodyBase)} />
+          <Field label="Location card title" value={s.contact.locationCardTitle} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, locationCardTitle: v } }))} {...sizeProps('contact.locationCardTitle', Math.round(headingBase * 0.63))} />
+          <Field label="Location card note" value={s.contact.locationCardNote} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, locationCardNote: v } }))} {...sizeProps('contact.locationCardNote', bodyBase)} />
+          <Field label="Form title" value={s.contact.formTitle} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, formTitle: v } }))} {...sizeProps('contact.formTitle', 24)} />
+          <Field label="Name label" value={s.contact.nameLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, nameLabel: v } }))} {...sizeProps('contact.nameLabel', bodyBase)} />
+          <Field label="Email label" value={s.contact.emailLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, emailLabel: v } }))} {...sizeProps('contact.emailLabel', bodyBase)} />
+          <Field label="Phone label" value={s.contact.phoneLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, phoneLabel: v } }))} {...sizeProps('contact.phoneLabel', bodyBase)} />
+          <Field label="Message label" value={s.contact.messageLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, messageLabel: v } }))} {...sizeProps('contact.messageLabel', bodyBase)} />
+          <Field label="Submit button" value={s.contact.submitLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, submitLabel: v } }))} {...sizeProps('contact.submitLabel', 17)} />
+          <Field label="Thank you message" value={s.contact.thankYou} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, thankYou: v } }))} {...sizeProps('contact.thankYou', bodyBase)} />
+          <Field label="Closing title" value={s.contact.closingTitle} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, closingTitle: v } }))} {...sizeProps('contact.closingTitle', Math.round(headingBase * 0.9))} />
+          <Field label="Closing text" value={s.contact.closingText} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, closingText: v } }))} {...sizeProps('contact.closingText', bodyBase)} />
+          <Field label="Call button word" value={s.contact.callButtonLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, callButtonLabel: v } }))} {...sizeProps('contact.callButtonLabel', 17)} />
+          <Field label="Footer Explore heading" value={s.footer.exploreTitle} onChange={(v) => set((p) => ({ ...p, footer: { ...p.footer, exploreTitle: v } }))} {...sizeProps('footer.exploreTitle', 18)} />
+          <Field label="Footer Contact heading" value={s.footer.contactTitle} onChange={(v) => set((p) => ({ ...p, footer: { ...p.footer, contactTitle: v } }))} {...sizeProps('footer.contactTitle', 18)} />
+          <Field label="Copyright line" value={s.footer.copyright} onChange={(v) => set((p) => ({ ...p, footer: { ...p.footer, copyright: v } }))} {...sizeProps('footer.copyright', bodyBase)} />
         </section>
 
         {imageEditor('contact', 'Contact page images')}
@@ -991,13 +1183,13 @@ export default function App() {
           <span>Admin panel. <button className="linklike" onClick={() => go('home')}>Preview Site</button></span>
         </div></div>
       )}
-      <header className="site-header">
+      <header className="site-header" style={s.breakers?.showHeader === false ? { borderBottom: 'none' } : undefined}>
         <div className="wrap">
           <div className="brand-row">
             <div className="logo-mark">RAS</div>
             <div>
-              <div className="brand-name">{s.businessName}</div>
-              <div className="brand-tag">{s.tagline}</div>
+              <div className="brand-name" style={{ fontSize: fs('brand.name', 26) }}>{s.businessName}</div>
+              <div className="brand-tag" style={{ fontSize: fs('tagline', 13) }}>{s.tagline}</div>
             </div>
           </div>
           <nav className="nav-row" aria-label="Main navigation">
@@ -1010,18 +1202,18 @@ export default function App() {
       </header>
       <main>{page}</main>
       {view === 'contact' && (
-        <footer className="site-footer"><div className="wrap"><div className="cols">
-          <div><h3>{s.businessName}</h3><p style={{ color: 'var(--gold)' }}>{s.tagline}</p></div>
-          <div><h3>{s.footer.exploreTitle}</h3>
-            <p><button className="linklike" onClick={() => go('home')}>{s.nav.home}</button><br />
-            <button className="linklike" onClick={() => go('services')}>{s.nav.services}</button><br />
-            <button className="linklike" onClick={() => go('about')}>{s.nav.about}</button><br />
-            <button className="linklike" onClick={() => go('contact')}>{s.nav.contact}</button></p>
+        <footer className="site-footer" style={s.breakers?.showFooter === false ? { borderTop: 'none' } : undefined}><div className="wrap"><div className="cols">
+          <div><h3 style={{ fontSize: fs('brand.name', 18) }}>{s.businessName}</h3><p style={{ color: 'var(--gold)', fontSize: fs('tagline', bodyBase) }}>{s.tagline}</p></div>
+          <div><h3 style={{ fontSize: fs('footer.exploreTitle', 18) }}>{s.footer.exploreTitle}</h3>
+            <p><button className="linklike" style={{ fontSize: fs('nav.home', 15) }} onClick={() => go('home')}>{s.nav.home}</button><br />
+            <button className="linklike" style={{ fontSize: fs('nav.services', 15) }} onClick={() => go('services')}>{s.nav.services}</button><br />
+            <button className="linklike" style={{ fontSize: fs('nav.about', 15) }} onClick={() => go('about')}>{s.nav.about}</button><br />
+            <button className="linklike" style={{ fontSize: fs('nav.contact', 15) }} onClick={() => go('contact')}>{s.nav.contact}</button></p>
           </div>
-          <div><h3>{s.footer.contactTitle}</h3>
-            <p><a href={`tel:${s.phoneTel}`}>{s.phoneDisplay}</a><br />{s.location}</p>
+          <div><h3 style={{ fontSize: fs('footer.contactTitle', 18) }}>{s.footer.contactTitle}</h3>
+            <p><a href={`tel:${s.phoneTel}`} style={{ fontSize: fs('business.phoneDisplay', bodyBase) }}>{s.phoneDisplay}</a><br /><span style={{ fontSize: fs('contact.location', bodyBase) }}>{s.location}</span></p>
           </div>
-        </div><p style={{ marginTop: 24 }}>{s.footer.copyright}</p></div></footer>
+        </div><p style={{ marginTop: 24, fontSize: fs('footer.copyright', bodyBase) }}>{s.footer.copyright}</p></div></footer>
       )}
     </div>
   )
