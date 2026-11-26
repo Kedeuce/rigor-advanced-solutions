@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { DEFAULT_SETTINGS, FONT_CHOICES, type ServiceItem, type SiteSettings } from './lib/settings'
 import { loadSettings, saveSettings } from './lib/store'
-import { isSupabaseConfigured } from './lib/supabase'
+import { isSupabaseConfigured, supabase } from './lib/supabase'
+
+// Only Ashley's emails can sign in as admin. Anyone else gets signed straight back out.
+const ADMIN_EMAILS = ['kebraphotography@gmail.com', 'kedeuce@gmail.com']
 
 type View = 'home' | 'services' | 'about' | 'contact' | 'admin'
 
@@ -50,10 +53,48 @@ export default function App() {
   const [saveNote, setSaveNote] = useState('')
   const [form, setForm] = useState({ name: '', email: '', phone: '', message: '' })
   const [submitted, setSubmitted] = useState(false)
+  const [adminUser, setAdminUser] = useState<string | null>(null)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginNote, setLoginNote] = useState('')
+  const [loginBusy, setLoginBusy] = useState(false)
 
   useEffect(() => {
     loadSettings().then((s) => { setSettings(s); setLoaded(true) })
   }, [])
+
+  useEffect(() => {
+    const client = supabase
+    if (!client) return
+    client.auth.getSession().then(({ data }) => {
+      const email = data.session?.user?.email ?? null
+      setAdminUser(email && ADMIN_EMAILS.includes(email) ? email : null)
+      if (email && !ADMIN_EMAILS.includes(email)) void client.auth.signOut()
+    })
+    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
+      const email = session?.user?.email ?? null
+      setAdminUser(email && ADMIN_EMAILS.includes(email) ? email : null)
+      if (email && !ADMIN_EMAILS.includes(email)) void client.auth.signOut()
+    })
+    return () => listener.subscription.unsubscribe()
+  }, [])
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    if (!supabase) { setLoginNote('Supabase is not configured yet, so sign in is unavailable.'); return }
+    const email = loginEmail.trim().toLowerCase()
+    if (!ADMIN_EMAILS.includes(email)) { setLoginNote('That email is not the admin email for this site.'); return }
+    setLoginBusy(true)
+    setLoginNote('')
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } })
+    setLoginBusy(false)
+    setLoginNote(error ? `Could not send the sign-in link: ${error.message}` : 'Sign-in link sent. Check your email and tap the link — it will bring you back here signed in.')
+  }
+
+  async function handleLogout() {
+    if (supabase) await supabase.auth.signOut()
+    setAdminUser(null)
+    go('home')
+  }
 
   const vars = useMemo(() => ({
     '--bg': settings.colors.background,
@@ -64,6 +105,7 @@ export default function App() {
     '--muted': settings.colors.muted,
     '--border': settings.colors.border,
     '--button-text': settings.colors.buttonText,
+    '--gold': settings.colors.gold,
     '--heading-font': `'${settings.fonts.headingFont}', sans-serif`,
     '--body-font': `'${settings.fonts.bodyFont}', sans-serif`,
     '--radius': `${settings.fonts.radius}px`,
@@ -157,7 +199,7 @@ export default function App() {
           <article className="service-detail" key={it.name}>
             <h2>{it.name}</h2>
             <p>{it.detail}</p>
-            <h3>{s.services.whoHeading}</h3>
+            <h3 style={{ color: 'var(--gold)' }}>{s.services.whoHeading}</h3>
             <p>{it.whoFor}</p>
             <h3>{s.services.includesHeading}</h3>
             <ul>{it.includes.map((inc) => <li key={inc}>{inc}</li>)}</ul>
@@ -233,11 +275,28 @@ export default function App() {
   }
 
   if (view === 'admin') {
+    if (!adminUser) {
+      page = (
+        <div className="wrap admin-grid">
+          <div>
+            <h1>Admin sign in</h1>
+            <p>This is Ashley's private admin area. Enter your admin email and we will send you a sign-in link — only Ashley's emails can sign in.</p>
+            <form className="consult" onSubmit={handleLogin}>
+              <label>Admin email</label>
+              <input type="email" required value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="kebraphotography@gmail.com" />
+              <button className="btn" type="submit" disabled={loginBusy}>{loginBusy ? 'Sending…' : 'Send me a sign-in link'}</button>
+              {loginNote && <p style={{ marginTop: 16, color: 'var(--accent)', fontWeight: 600 }}>{loginNote}</p>}
+            </form>
+          </div>
+        </div>
+      )
+    } else {
     page = (
       <div className="wrap admin-grid">
         <div>
           <h1>Admin</h1>
           <p>
+            Signed in as {adminUser}. <button className="linklike" onClick={() => void handleLogout()}>Sign out</button><br />
             Edit everything you see on the site here, then press Save Changes. Storage: {isSupabaseConfigured ? 'Supabase' : 'this browser (localStorage), Supabase is not configured yet'}.
             Use Preview Site at the top to see the live site.
           </p>
@@ -275,6 +334,7 @@ export default function App() {
           <ColorField label="Muted text colour" value={s.colors.muted} onChange={(v) => set((p) => ({ ...p, colors: { ...p.colors, muted: v } }))} />
           <ColorField label="Border colour" value={s.colors.border} onChange={(v) => set((p) => ({ ...p, colors: { ...p.colors, border: v } }))} />
           <ColorField label="Button text colour" value={s.colors.buttonText} onChange={(v) => set((p) => ({ ...p, colors: { ...p.colors, buttonText: v } }))} />
+          <ColorField label="Gold highlight colour" value={s.colors.gold} onChange={(v) => set((p) => ({ ...p, colors: { ...p.colors, gold: v } }))} />
         </section>
 
         <section className="admin-section"><h2>Home page</h2>
@@ -367,13 +427,14 @@ export default function App() {
         </div>
       </div>
     )
+    }
   }
 
   return (
     <div style={{ ...vars, background: 'var(--bg)', minHeight: '100vh', color: 'var(--body)' }}>
       <div className="admin-bar"><div className="wrap">
         {view !== 'admin'
-          ? <span>Viewing the live site. <button className="linklike" onClick={() => go('admin')}>Open Admin</button> to edit fonts, colours, and every word.</span>
+          ? <span>Viewing the live site. <button className="linklike" onClick={() => go('admin')}>{adminUser ? 'Open Admin' : 'Admin sign in'}</button>{adminUser ? ' to edit fonts, colours, and every word.' : ' — private, Ashley only.'}</span>
           : <span>Admin panel. <button className="linklike" onClick={() => go('home')}>Preview Site</button></span>}
       </div></div>
       <header className="site-header">
@@ -396,7 +457,7 @@ export default function App() {
       <main>{page}</main>
       {view === 'contact' && (
         <footer className="site-footer"><div className="wrap"><div className="cols">
-          <div><h3>{s.businessName}</h3><p>{s.tagline}</p></div>
+          <div><h3>{s.businessName}</h3><p style={{ color: 'var(--gold)' }}>{s.tagline}</p></div>
           <div><h3>{s.footer.exploreTitle}</h3>
             <p><button className="linklike" onClick={() => go('home')}>{s.nav.home}</button><br />
             <button className="linklike" onClick={() => go('services')}>{s.nav.services}</button><br />
