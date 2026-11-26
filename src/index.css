@@ -1,7 +1,9 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; overflow-x: clip; }
+html { background: #040b18; }
 body {
-  background: var(--bg);
+  background: #040b18;
+  background: var(--bg, #040b18);
   color: var(--body);
   font-family: var(--body-font), system-ui, -apple-system, sans-serif;
   line-height: 1.6;

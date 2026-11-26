@@ -86,7 +86,7 @@ export default function App() {
     }
   }
 
-  if (!loaded) return <div className="wrap" style={vars}><p style={{ padding: 40 }}>Loading Rigor Advanced Solutions…</p></div>
+  if (!loaded) return <div className="wrap" style={{ ...vars, background: 'var(--bg)', minHeight: '100vh' }}><p style={{ padding: 40 }}>Loading Rigor Advanced Solutions…</p></div>
 
   const s = settings
   const navBtn = (v: View, label: string) => (
@@ -370,7 +370,7 @@ export default function App() {
   }
 
   return (
-    <div style={vars}>
+    <div style={{ ...vars, background: 'var(--bg)', minHeight: '100vh', color: 'var(--body)' }}>
       <div className="admin-bar"><div className="wrap">
         {view !== 'admin'
           ? <span>Viewing the live site. <button className="linklike" onClick={() => go('admin')}>Open Admin</button> to edit fonts, colours, and every word.</span>
