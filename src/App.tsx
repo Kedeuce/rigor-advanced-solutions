@@ -54,7 +54,7 @@ function SlotImages({ page, slot, images, className = '' }: { page: PageKey; slo
   )
 }
 
-// Only Ashley's emails can sign in as admin. Anyone else gets signed straight back out.
+// Only Dada's emails can sign in as admin. Anyone else gets signed straight back out.
 const ADMIN_EMAILS = ['kebraphotography@gmail.com', 'kedeuce@gmail.com']
 
 type View = 'home' | 'services' | 'about' | 'contact' | 'admin'
@@ -279,6 +279,18 @@ export default function App() {
   const [cropFile, setCropFile] = useState<File | null>(null)
   const [cropTarget, setCropTarget] = useState<{ kind: 'page'; page: PageKey } | { kind: 'hero' } | { kind: 'replace'; page: PageKey; id: string } | null>(null)
 
+  // Admin is hidden from public visitors: it opens only via the #admin
+  // address (e.g. https://rigoradvancedsolutions.com/#admin). No button or
+  // link anywhere on the public site leads to it.
+  useEffect(() => {
+    const openAdminFromHash = () => {
+      if (window.location.hash === '#admin') setView('admin')
+    }
+    openAdminFromHash()
+    window.addEventListener('hashchange', openAdminFromHash)
+    return () => window.removeEventListener('hashchange', openAdminFromHash)
+  }, [])
+
   useEffect(() => {
     loadSettings().then((s) => { setSettings(s); setLoaded(true) })
   }, [])
@@ -409,7 +421,17 @@ export default function App() {
     '--radius': `${settings.fonts.radius}px`,
   }) as CSSProperties, [settings])
 
-  const go = (v: View) => { setView(v); window.scrollTo({ top: 0 }) }
+  // Leaving Admin (sign out, or Preview Site) clears the #admin hash so the
+  // Admin view is not left open in the address bar.
+  const go = (v: View) => {
+    setView(v)
+    if (v === 'admin') {
+      if (window.location.hash !== '#admin') window.history.replaceState(null, '', '#admin')
+    } else if (window.location.hash === '#admin') {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    }
+    window.scrollTo({ top: 0 })
+  }
   const set = (fn: (s: SiteSettings) => SiteSettings) => { setSettings((prev) => fn(prev)); setSaveNote('') }
   const updateService = (i: number, patch: Partial<ServiceItem>) =>
     set((s) => ({ ...s, services: { ...s.services, items: s.services.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) } }))
@@ -720,7 +742,7 @@ export default function App() {
         <div className="wrap admin-grid">
           <div>
             <h1>Admin sign in</h1>
-            <p>This is Ashley's private admin area. Enter your 6-digit admin PIN — no email needed.</p>
+            <p>This is Dada's private admin area. Enter your 6-digit admin PIN — no email needed.</p>
             {!settings.admin?.pinSet && (
               <p style={{ color: 'var(--accent)', fontWeight: 600 }}>No PIN set yet. Use the sign-in link below first, then set your PIN in Admin.</p>
             )}
@@ -938,11 +960,11 @@ export default function App() {
 
   return (
     <div style={{ ...vars, background: 'var(--bg)', minHeight: '100vh', color: 'var(--body)' }}>
-      <div className="admin-bar"><div className="wrap">
-        {view !== 'admin'
-          ? <span>Viewing the live site. <button className="linklike" onClick={() => go('admin')}>{adminUser ? 'Open Admin' : 'Admin sign in'}</button>{adminUser ? ' to edit fonts, colours, and every word.' : ' — private, Ashley only.'}</span>
-          : <span>Admin panel. <button className="linklike" onClick={() => go('home')}>Preview Site</button></span>}
-      </div></div>
+      {view === 'admin' && (
+        <div className="admin-bar"><div className="wrap">
+          <span>Admin panel. <button className="linklike" onClick={() => go('home')}>Preview Site</button></span>
+        </div></div>
+      )}
       <header className="site-header">
         <div className="wrap">
           <div className="brand-row">
