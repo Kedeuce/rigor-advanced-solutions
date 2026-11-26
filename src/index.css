@@ -36,7 +36,7 @@ button { font-family: inherit; cursor: pointer; }
 .eyebrow { display: inline-block; font-size: 13px; letter-spacing: 0.14em; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 14px; }
 .section { padding: 44px 0; }
 .section-title { font-size: clamp(26px, 4vw, 38px); }
-.gold-line { color: var(--accent); font-weight: 600; font-size: 18px; margin: 18px 0 0; }
+.gold-line { color: var(--gold, var(--accent)); font-weight: 600; font-size: 18px; margin: 18px 0 0; }
 .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
 @media (max-width: 1024px) { .cards { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
