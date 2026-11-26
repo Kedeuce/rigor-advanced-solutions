@@ -139,6 +139,8 @@ export interface SiteSettings {
   footer: { exploreTitle: string; contactTitle: string; copyright: string }
   heroImage: string
   images: Record<PageKey, SiteImage[]>
+  /** Admin sign-in. Only a flag — the PIN itself is never stored here. */
+  admin: { pinSet: boolean }
 }
 
 export const FONT_CHOICES = [
@@ -283,4 +285,5 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   },
   heroImage: '/globe.png',
   images: { home: [], services: [], about: [], contact: [] },
+  admin: { pinSet: false },
 }
