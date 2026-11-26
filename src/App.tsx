@@ -1,7 +1,52 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import { DEFAULT_SETTINGS, FONT_CHOICES, type ServiceItem, type SiteSettings } from './lib/settings'
+import { DEFAULT_SETTINGS, FONT_CHOICES, type PageKey, type ServiceItem, type SiteImage, type SiteSettings } from './lib/settings'
 import { loadSettings, saveSettings } from './lib/store'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
+import { uploadSiteImage } from './lib/images'
+
+// Static inline SVG icons for the four services, in the glowing blue style.
+const SERVICE_ICONS: ReactNode[] = [
+  // AI Consultation and Strategy: connected network / brain
+  <svg key="brain" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="32" cy="32" r="20" />
+    <circle cx="32" cy="14" r="4" /><circle cx="14" cy="32" r="4" /><circle cx="50" cy="32" r="4" /><circle cx="32" cy="50" r="4" />
+    <circle cx="20" cy="20" r="3" /><circle cx="44" cy="20" r="3" /><circle cx="20" cy="44" r="3" /><circle cx="44" cy="44" r="3" />
+    <path d="M32 18v6M18 32h6M40 32h6M32 40v6M23 23l6 6M41 23l-6 6M23 41l6-6M41 41l-6-6" />
+  </svg>,
+  // Custom AI Development: code brackets
+  <svg key="code" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="32" cy="32" r="24" />
+    <path d="M26 22l-8 10 8 10M38 22l8 10-8 10M36 18l-8 28" />
+  </svg>,
+  // Data Analytics and Insights: bar chart with a rising arrow
+  <svg key="chart" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 52h40" />
+    <path d="M18 52V36M28 52V26M38 52V32M48 52V18" />
+    <path d="M18 30l12-8 8 5 10-9" />
+    <path d="M48 18h-6M48 18v6" />
+  </svg>,
+  // AI-Powered Automation: gears
+  <svg key="gears" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="26" cy="26" r="10" /><circle cx="26" cy="26" r="3.5" />
+    <path d="M26 12v5M26 35v5M12 26h5M35 26h5M16 16l3.5 3.5M36 36l3.5 3.5M36 16l-3.5 3.5M16 36l3.5-3.5" />
+    <circle cx="46" cy="46" r="8" /><circle cx="46" cy="46" r="2.5" />
+    <path d="M46 35v4M46 53v4M35 46h4M53 46h4M38 38l3 3M54 54l-3-3M54 38l-3 3M38 54l3-3" />
+  </svg>,
+]
+
+function PageGallery({ images }: { images: SiteImage[] }) {
+  if (!images || images.length === 0) return null
+  return (
+    <div className="page-gallery">
+      {images.map((img) => (
+        <figure className="gallery-item" key={img.id}>
+          <img src={img.url} alt={img.alt || 'Image'} loading="lazy" />
+          {img.caption ? <figcaption>{img.caption}</figcaption> : null}
+        </figure>
+      ))}
+    </div>
+  )
+}
 
 // Only Ashley's emails can sign in as admin. Anyone else gets signed straight back out.
 const ADMIN_EMAILS = ['kebraphotography@gmail.com', 'kedeuce@gmail.com']
@@ -57,6 +102,9 @@ export default function App() {
   const [loginEmail, setLoginEmail] = useState('')
   const [loginNote, setLoginNote] = useState('')
   const [loginBusy, setLoginBusy] = useState(false)
+  const [uploadNote, setUploadNote] = useState('')
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const [urlDraft, setUrlDraft] = useState<Record<PageKey, string>>({ home: '', services: '', about: '', contact: '' })
 
   useEffect(() => {
     loadSettings().then((s) => { setSettings(s); setLoaded(true) })
@@ -116,6 +164,82 @@ export default function App() {
   const updateService = (i: number, patch: Partial<ServiceItem>) =>
     set((s) => ({ ...s, services: { ...s.services, items: s.services.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) } }))
 
+  const newImageId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  const addImage = (page: PageKey, url: string, alt = '') =>
+    set((s) => ({ ...s, images: { ...s.images, [page]: [...(s.images?.[page] ?? []), { id: newImageId(), url, alt, caption: '' }] } }))
+  const updateImage = (page: PageKey, id: string, patch: Partial<SiteImage>) =>
+    set((s) => ({ ...s, images: { ...s.images, [page]: (s.images?.[page] ?? []).map((im) => (im.id === id ? { ...im, ...patch } : im)) } }))
+  const removeImage = (page: PageKey, id: string) =>
+    set((s) => ({ ...s, images: { ...s.images, [page]: (s.images?.[page] ?? []).filter((im) => im.id !== id) } }))
+
+  async function handleImageFile(page: PageKey, file: File | undefined) {
+    if (!file) return
+    setUploadBusy(true)
+    setUploadNote('Uploading your image…')
+    try {
+      const { url, stored } = await uploadSiteImage(file)
+      addImage(page, url, file.name.replace(/\.[^.]+$/, ''))
+      setUploadNote(stored === 'storage' ? 'Image added. Press Save Changes to make it live.' : 'Image added (saved with the site settings). Press Save Changes to make it live.')
+    } catch {
+      setUploadNote('That image could not be added. Try a different photo, or paste an image link instead.')
+    } finally {
+      setUploadBusy(false)
+    }
+  }
+
+  async function handleHeroImageFile(file: File | undefined) {
+    if (!file) return
+    setUploadBusy(true)
+    setUploadNote('Uploading your image…')
+    try {
+      const { url } = await uploadSiteImage(file)
+      set((p) => ({ ...p, heroImage: url }))
+      setUploadNote('Hero image changed. Press Save Changes to make it live.')
+    } catch {
+      setUploadNote('That image could not be added. Try a different photo, or paste an image link instead.')
+    } finally {
+      setUploadBusy(false)
+    }
+  }
+
+  function handleImageUrl(page: PageKey) {
+    const url = (urlDraft[page] || '').trim()
+    if (!url) { setUploadNote('Paste an image link first, or choose a file to upload.'); return }
+    addImage(page, url)
+    setUrlDraft((d) => ({ ...d, [page]: '' }))
+    setUploadNote('Image added. Press Save Changes to make it live.')
+  }
+
+  const imageEditor = (page: PageKey, label: string) => {
+    const list = settings.images?.[page] ?? []
+    return (
+      <section className="admin-section" key={`images-${page}`}>
+        <h2>{label}</h2>
+        <p style={{ fontSize: 14, color: 'var(--muted)' }}>Add photos to this page, change their descriptions, or delete them. Images appear in a gallery on the page, below the main sections.</p>
+        {list.length === 0 && <p style={{ fontSize: 14, color: 'var(--muted)' }}>No images on this page yet.</p>}
+        {list.map((img) => (
+          <div className="img-row" key={img.id}>
+            <img className="img-thumb" src={img.url} alt={img.alt || 'Image preview'} />
+            <div className="img-row-fields">
+              <Field label="Description (alt text)" value={img.alt} onChange={(v) => updateImage(page, img.id, { alt: v })} />
+              <Field label="Caption under the image (optional)" value={img.caption ?? ''} onChange={(v) => updateImage(page, img.id, { caption: v })} />
+              <button className="btn secondary" style={{ marginTop: 0, padding: '10px 18px', minHeight: 44 }} onClick={() => { if (window.confirm('Delete this image from the page?')) removeImage(page, img.id) }}>Delete image</button>
+            </div>
+          </div>
+        ))}
+        <div className="img-add">
+          <label className="btn secondary" style={{ marginTop: 0, padding: '10px 18px', minHeight: 44, display: 'inline-block', textAlign: 'center' }}>
+            {uploadBusy ? 'Uploading…' : 'Upload a photo'}
+            <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadBusy} onChange={(e) => { void handleImageFile(page, e.target.files?.[0]); e.target.value = '' }} />
+          </label>
+          <input type="text" placeholder="Or paste an image link, then press Add" value={urlDraft[page]} onChange={(e) => setUrlDraft((d) => ({ ...d, [page]: e.target.value }))} />
+          <button className="btn secondary" style={{ marginTop: 0, padding: '10px 18px', minHeight: 44 }} onClick={() => handleImageUrl(page)}>Add</button>
+        </div>
+        {uploadNote && <p style={{ marginTop: 10, color: 'var(--accent)', fontWeight: 600, fontSize: 14 }}>{uploadNote}</p>}
+      </section>
+    )
+  }
+
   async function handleSave() {
     const where = await saveSettings(settings)
     setSaveNote(where === 'supabase' ? 'Saved to Supabase, and it is live now.' : 'Saved in this browser (localStorage). Add your Supabase keys in Vercel to save to Supabase.')
@@ -141,13 +265,15 @@ export default function App() {
     page = (
       <>
         <section className="hero">
-          <div className="globe" aria-hidden="true" />
-          <div className="wrap">
-            <span className="eyebrow">{s.home.eyebrow}</span>
-            <h1>{s.home.headline}</h1>
-            <p className="subhead">{s.home.subhead}</p>
-            <p className="lede">{s.home.intro}</p>
-            <p className="gold-line">{s.home.goldLine}</p>
+          <div className="wrap hero-inner">
+            <div className="hero-text">
+              <span className="eyebrow">{s.home.eyebrow}</span>
+              <h1>{s.home.headline}</h1>
+              <p className="subhead">{s.home.subhead}</p>
+              <p className="lede">{s.home.intro}</p>
+              <p className="gold-line">{s.home.goldLine}</p>
+            </div>
+            {s.heroImage ? <img className="hero-img" src={s.heroImage} alt="Glowing network globe" /> : null}
           </div>
         </section>
         <section className="section"><div className="wrap">
@@ -156,10 +282,10 @@ export default function App() {
           <div className="cards">
             {s.services.items.map((it, i) => (
               <article className="card" key={it.name}>
+                <div className="service-icon">{SERVICE_ICONS[i] ?? null}</div>
                 <h3>{it.name}</h3>
                 <p>{it.short}</p>
                 <button className="linklike" onClick={() => go('services')}>See full details</button>
-                {i === 0 && <span style={{ display: 'none' }} />}
               </article>
             ))}
           </div>
@@ -184,6 +310,7 @@ export default function App() {
               </article>
             ))}
           </div>
+          <PageGallery images={s.images?.home ?? []} />
         </div></section>
       </>
     )
@@ -195,8 +322,9 @@ export default function App() {
         <span className="eyebrow">{s.services.label}</span>
         <h1>{s.services.title}</h1>
         <p style={{ maxWidth: 720, fontSize: 18 }}>{s.services.intro}</p>
-        {s.services.items.map((it) => (
+        {s.services.items.map((it, i) => (
           <article className="service-detail" key={it.name}>
+            <div className="service-icon">{SERVICE_ICONS[i] ?? null}</div>
             <h2>{it.name}</h2>
             <p>{it.detail}</p>
             <h3 style={{ color: 'var(--gold)' }}>{s.services.whoHeading}</h3>
@@ -205,6 +333,7 @@ export default function App() {
             <ul>{it.includes.map((inc) => <li key={inc}>{inc}</li>)}</ul>
           </article>
         ))}
+        <PageGallery images={s.images?.services ?? []} />
       </div></section>
     )
   }
@@ -226,6 +355,7 @@ export default function App() {
             <article className="card" key={v.title}><h3>{v.title}</h3><p>{v.text}</p></article>
           ))}
         </div>
+        <PageGallery images={s.images?.about ?? []} />
       </div></section>
     )
   }
@@ -265,6 +395,7 @@ export default function App() {
           )}
           {submitted && <a className="btn secondary" href={`tel:${s.phoneTel}`} style={{ marginLeft: 12, textDecoration: 'none' }}>{s.contact.callButtonLabel}</a>}
         </form>
+        <PageGallery images={s.images?.contact ?? []} />
         <div className="closing">
           <h2>{s.contact.closingTitle}</h2>
           <p>{s.contact.closingText}</p>
@@ -343,6 +474,14 @@ export default function App() {
           <Field label="Subhead" value={s.home.subhead} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, subhead: v } }))} />
           <Field label="Intro" value={s.home.intro} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, intro: v } }))} />
           <Field label="Gold line under the intro" value={s.home.goldLine} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, goldLine: v } }))} />
+          <Field label="Hero image (the globe on the home page — leave blank to hide it)" value={s.heroImage} onChange={(v) => set((p) => ({ ...p, heroImage: v }))} />
+          {s.heroImage ? <img src={s.heroImage} alt="Hero preview" style={{ width: 120, height: 120, objectFit: 'contain', borderRadius: 12, border: '1px solid var(--border)', marginBottom: 14 }} /> : null}
+          <div className="img-add" style={{ marginTop: 0, marginBottom: 14 }}>
+            <label className="btn secondary" style={{ marginTop: 0, padding: '10px 18px', minHeight: 44, display: 'inline-block', textAlign: 'center' }}>
+              {uploadBusy ? 'Uploading…' : 'Upload a new hero image'}
+              <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadBusy} onChange={(e) => { void handleHeroImageFile(e.target.files?.[0]); e.target.value = '' }} />
+            </label>
+          </div>
           <Field label="Services label" value={s.home.servicesLabel} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, servicesLabel: v } }))} />
           <Field label="Why Rigor title" value={s.home.whyTitle} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyTitle: v } }))} />
           <Field label="Why Rigor intro" value={s.home.whyIntro} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyIntro: v } }))} />
@@ -362,6 +501,8 @@ export default function App() {
           ))}
         </section>
 
+        {imageEditor('home', 'Home page images')}
+
         <section className="admin-section"><h2>Services page</h2>
           <Field label="Services label" value={s.services.label} onChange={(v) => set((p) => ({ ...p, services: { ...p.services, label: v } }))} />
           <Field label="Services title" value={s.services.title} textarea onChange={(v) => set((p) => ({ ...p, services: { ...p.services, title: v } }))} />
@@ -379,6 +520,8 @@ export default function App() {
           ))}
         </section>
 
+        {imageEditor('services', 'Services page images')}
+
         <section className="admin-section"><h2>About page</h2>
           <Field label="About label" value={s.about.label} onChange={(v) => set((p) => ({ ...p, about: { ...p.about, label: v } }))} />
           <Field label="About title" value={s.about.title} textarea onChange={(v) => set((p) => ({ ...p, about: { ...p.about, title: v } }))} />
@@ -395,6 +538,8 @@ export default function App() {
             </div>
           ))}
         </section>
+
+        {imageEditor('about', 'About page images')}
 
         <section className="admin-section"><h2>Contact page and footer</h2>
           <Field label="Contact label" value={s.contact.label} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, label: v } }))} />
@@ -418,6 +563,8 @@ export default function App() {
           <Field label="Footer Contact heading" value={s.footer.contactTitle} onChange={(v) => set((p) => ({ ...p, footer: { ...p.footer, contactTitle: v } }))} />
           <Field label="Copyright line" value={s.footer.copyright} onChange={(v) => set((p) => ({ ...p, footer: { ...p.footer, copyright: v } }))} />
         </section>
+
+        {imageEditor('contact', 'Contact page images')}
 
         <div className="sticky-actions">
           <button className="btn" style={{ marginTop: 0 }} onClick={() => void handleSave()}>Save Changes</button>
