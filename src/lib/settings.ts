@@ -25,6 +25,15 @@ export const IMAGE_SIZES: { value: ImageSize; label: string }[] = [
   { value: 'full', label: 'Full width' },
 ]
 
+/** How the page text flows around an image: not at all, or floated to one side. */
+export type ImageWrap = 'none' | 'left' | 'right'
+
+export const IMAGE_WRAPS: { value: ImageWrap; label: string }[] = [
+  { value: 'none', label: 'None — text above and below' },
+  { value: 'left', label: 'Float left — text flows on the right' },
+  { value: 'right', label: 'Float right — text flows on the left' },
+]
+
 export interface SiteImage {
   id: string
   url: string
@@ -33,6 +42,30 @@ export interface SiteImage {
   /** Placement slot on the page. Images with no position render at the page's previous fixed spot. */
   position?: string
   size?: ImageSize
+  /** Text wrap: 'none' (default), or float the image left/right so text flows around it. */
+  wrap?: ImageWrap
+}
+
+/** The divider lines that break up the page. */
+export interface BreakerSettings {
+  /** Colour of the divider lines under the header, above the footer, and between sections. */
+  color: string
+  /** Thickness of those divider lines, in px. */
+  thickness: number
+  /** Show the line under the header. */
+  showHeader: boolean
+  /** Show the line above the footer. */
+  showFooter: boolean
+  /** Show the gold line under the Home intro. */
+  showGoldLine: boolean
+  /** Show divider lines between the sections on the Home page. */
+  homeSections: boolean
+  /** Show divider lines between the service details on the Services page. */
+  servicesSections: boolean
+  /** Show divider lines between the blocks on the About page. */
+  aboutSections: boolean
+  /** Show divider lines between the blocks on the Contact page. */
+  contactSections: boolean
 }
 
 export type PageKey = 'home' | 'services' | 'about' | 'contact'
@@ -90,6 +123,10 @@ export interface SiteSettings {
     gold: string
   }
   fonts: { headingFont: string; bodyFont: string; radius: number; headingSize: number; bodySize: number }
+  /** Per-text sizes in px, keyed like 'home.headline' or 'services.items.0.name'.
+      A key set here overrides the general heading/body size for that one text only;
+      texts with no entry fall back to the general sizes. */
+  fontSizes: Record<string, number>
   nav: { home: string; services: string; about: string; contact: string; admin: string }
   home: {
     eyebrow: string
@@ -139,6 +176,7 @@ export interface SiteSettings {
   footer: { exploreTitle: string; contactTitle: string; copyright: string }
   heroImage: string
   images: Record<PageKey, SiteImage[]>
+  breakers: BreakerSettings
   /** Admin sign-in. Only a flag — the PIN itself is never stored here. */
   admin: { pinSet: boolean }
 }
@@ -174,6 +212,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
     gold: '#669d34',
   },
   fonts: { headingFont: 'Montserrat', bodyFont: 'Plus Jakarta Sans', radius: 9, headingSize: 38, bodySize: 16 },
+  fontSizes: {},
   nav: { home: 'Home', services: 'Services', about: 'About', contact: 'Contact', admin: 'Admin' },
   home: {
     eyebrow: 'RIGOR ADVANCED SOLUTIONS',
@@ -285,5 +324,6 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   },
   heroImage: '/globe.png',
   images: { home: [], services: [], about: [], contact: [] },
+  breakers: { color: '#0e5f8f', thickness: 1, showHeader: true, showFooter: true, showGoldLine: true, homeSections: false, servicesSections: false, aboutSections: false, contactSections: false },
   admin: { pinSet: false },
 }

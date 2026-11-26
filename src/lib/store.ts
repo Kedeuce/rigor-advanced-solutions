@@ -12,6 +12,7 @@ function normalizeImages(page: PageKey, list: unknown): SiteImage[] {
       ...im,
       position: im.position || DEFAULT_SLOT[page],
       size: im.size || 'medium',
+      wrap: im.wrap || 'none',
     }))
 }
 
@@ -23,6 +24,7 @@ function mergeWithDefaults(raw: unknown): SiteSettings {
     ...(raw as Partial<SiteSettings>),
     colors: { ...DEFAULT_SETTINGS.colors, ...((raw as SiteSettings).colors ?? {}) },
     fonts: { ...DEFAULT_SETTINGS.fonts, ...((raw as SiteSettings).fonts ?? {}) },
+    fontSizes: { ...DEFAULT_SETTINGS.fontSizes, ...((raw as SiteSettings).fontSizes ?? {}) },
     nav: { ...DEFAULT_SETTINGS.nav, ...((raw as SiteSettings).nav ?? {}) },
     home: {
       ...DEFAULT_SETTINGS.home,
@@ -38,6 +40,7 @@ function mergeWithDefaults(raw: unknown): SiteSettings {
     },
     contact: { ...DEFAULT_SETTINGS.contact, ...((raw as SiteSettings).contact ?? {}) },
     footer: { ...DEFAULT_SETTINGS.footer, ...((raw as SiteSettings).footer ?? {}) },
+    breakers: { ...DEFAULT_SETTINGS.breakers, ...((raw as SiteSettings).breakers ?? {}) },
     admin: { ...DEFAULT_SETTINGS.admin, ...((raw as SiteSettings).admin ?? {}) },
     images: {
       home: normalizeImages('home', (raw as SiteSettings).images?.home),
