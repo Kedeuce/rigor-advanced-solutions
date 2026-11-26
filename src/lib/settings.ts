@@ -16,6 +16,15 @@ export interface ProcessStep {
   text: string
 }
 
+export interface SiteImage {
+  id: string
+  url: string
+  alt: string
+  caption?: string
+}
+
+export type PageKey = 'home' | 'services' | 'about' | 'contact'
+
 export interface SiteSettings {
   businessName: string
   tagline: string
@@ -81,6 +90,8 @@ export interface SiteSettings {
     callButtonLabel: string
   }
   footer: { exploreTitle: string; contactTitle: string; copyright: string }
+  heroImage: string
+  images: Record<PageKey, SiteImage[]>
 }
 
 export const FONT_CHOICES = [
@@ -223,4 +234,6 @@ export const DEFAULT_SETTINGS: SiteSettings = {
     contactTitle: 'Contact',
     copyright: '© 2026 Rigor Advanced Solutions. All rights reserved.',
   },
+  heroImage: '/globe.png',
+  images: { home: [], services: [], about: [], contact: [] },
 }
