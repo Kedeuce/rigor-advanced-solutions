@@ -89,7 +89,7 @@ export interface SiteSettings {
     buttonText: string
     gold: string
   }
-  fonts: { headingFont: string; bodyFont: string; radius: number }
+  fonts: { headingFont: string; bodyFont: string; radius: number; headingSize: number; bodySize: number }
   nav: { home: string; services: string; about: string; contact: string; admin: string }
   home: {
     eyebrow: string
@@ -173,7 +173,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
     buttonText: '#04101f',
     gold: '#669d34',
   },
-  fonts: { headingFont: 'Montserrat', bodyFont: 'Plus Jakarta Sans', radius: 9 },
+  fonts: { headingFont: 'Montserrat', bodyFont: 'Plus Jakarta Sans', radius: 9, headingSize: 38, bodySize: 16 },
   nav: { home: 'Home', services: 'Services', about: 'About', contact: 'Contact', admin: 'Admin' },
   home: {
     eyebrow: 'RIGOR ADVANCED SOLUTIONS',
