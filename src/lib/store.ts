@@ -1,7 +1,19 @@
-import { DEFAULT_SETTINGS, type SiteSettings } from './settings'
+import { DEFAULT_SETTINGS, DEFAULT_SLOT, type PageKey, type SiteImage, type SiteSettings } from './settings'
 import { supabase } from './supabase'
 
 const LOCAL_KEY = 'ras-site-settings-v1'
+
+/** Fill in placement + size for images saved before those fields existed. */
+function normalizeImages(page: PageKey, list: unknown): SiteImage[] {
+  if (!Array.isArray(list)) return []
+  return list
+    .filter((im): im is SiteImage => !!im && typeof (im as SiteImage).url === 'string')
+    .map((im) => ({
+      ...im,
+      position: im.position || DEFAULT_SLOT[page],
+      size: im.size || 'medium',
+    }))
+}
 
 function mergeWithDefaults(raw: unknown): SiteSettings {
   if (!raw || typeof raw !== 'object') return DEFAULT_SETTINGS
@@ -27,10 +39,10 @@ function mergeWithDefaults(raw: unknown): SiteSettings {
     contact: { ...DEFAULT_SETTINGS.contact, ...((raw as SiteSettings).contact ?? {}) },
     footer: { ...DEFAULT_SETTINGS.footer, ...((raw as SiteSettings).footer ?? {}) },
     images: {
-      home: ((raw as SiteSettings).images?.home ?? DEFAULT_SETTINGS.images.home) as SiteSettings['images']['home'],
-      services: ((raw as SiteSettings).images?.services ?? DEFAULT_SETTINGS.images.services) as SiteSettings['images']['services'],
-      about: ((raw as SiteSettings).images?.about ?? DEFAULT_SETTINGS.images.about) as SiteSettings['images']['about'],
-      contact: ((raw as SiteSettings).images?.contact ?? DEFAULT_SETTINGS.images.contact) as SiteSettings['images']['contact'],
+      home: normalizeImages('home', (raw as SiteSettings).images?.home),
+      services: normalizeImages('services', (raw as SiteSettings).images?.services),
+      about: normalizeImages('about', (raw as SiteSettings).images?.about),
+      contact: normalizeImages('contact', (raw as SiteSettings).images?.contact),
     },
   }
 }
