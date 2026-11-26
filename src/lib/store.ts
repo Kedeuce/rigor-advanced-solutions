@@ -26,6 +26,12 @@ function mergeWithDefaults(raw: unknown): SiteSettings {
     },
     contact: { ...DEFAULT_SETTINGS.contact, ...((raw as SiteSettings).contact ?? {}) },
     footer: { ...DEFAULT_SETTINGS.footer, ...((raw as SiteSettings).footer ?? {}) },
+    images: {
+      home: ((raw as SiteSettings).images?.home ?? DEFAULT_SETTINGS.images.home) as SiteSettings['images']['home'],
+      services: ((raw as SiteSettings).images?.services ?? DEFAULT_SETTINGS.images.services) as SiteSettings['images']['services'],
+      about: ((raw as SiteSettings).images?.about ?? DEFAULT_SETTINGS.images.about) as SiteSettings['images']['about'],
+      contact: ((raw as SiteSettings).images?.contact ?? DEFAULT_SETTINGS.images.contact) as SiteSettings['images']['contact'],
+    },
   }
 }
 
