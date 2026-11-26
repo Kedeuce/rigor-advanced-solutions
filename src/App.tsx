@@ -279,16 +279,24 @@ export default function App() {
   const [cropFile, setCropFile] = useState<File | null>(null)
   const [cropTarget, setCropTarget] = useState<{ kind: 'page'; page: PageKey } | { kind: 'hero' } | { kind: 'replace'; page: PageKey; id: string } | null>(null)
 
-  // Admin is hidden from public visitors: it opens only via the #admin
-  // address (e.g. https://rigoradvancedsolutions.com/#admin). No button or
+  // Admin is hidden from public visitors: it opens only via the /admin
+  // path (e.g. https://rigoradvancedsolutions.com/admin) or the #admin
+  // hash (e.g. https://rigoradvancedsolutions.com/#admin). The /admin path
+  // is the main way in: a hash can be dropped by the apex-to-www redirect
+  // on some mobile browsers, but a path always survives it. No button or
   // link anywhere on the public site leads to it.
   useEffect(() => {
-    const openAdminFromHash = () => {
-      if (window.location.hash === '#admin') setView('admin')
+    const openAdminFromUrl = () => {
+      const path = window.location.pathname
+      if (path === '/admin' || path === '/admin/' || window.location.hash === '#admin') {
+        setView('admin')
+        // Normalise the address bar to the /admin path, no page reload.
+        if (path !== '/admin') window.history.replaceState(null, '', '/admin')
+      }
     }
-    openAdminFromHash()
-    window.addEventListener('hashchange', openAdminFromHash)
-    return () => window.removeEventListener('hashchange', openAdminFromHash)
+    openAdminFromUrl()
+    window.addEventListener('hashchange', openAdminFromUrl)
+    return () => window.removeEventListener('hashchange', openAdminFromUrl)
   }, [])
 
   useEffect(() => {
@@ -421,14 +429,14 @@ export default function App() {
     '--radius': `${settings.fonts.radius}px`,
   }) as CSSProperties, [settings])
 
-  // Leaving Admin (sign out, or Preview Site) clears the #admin hash so the
-  // Admin view is not left open in the address bar.
+  // Leaving Admin (sign out, or Preview Site) returns the address bar to
+  // '/' and clears any #admin hash, so the Admin view is not left open.
   const go = (v: View) => {
     setView(v)
     if (v === 'admin') {
-      if (window.location.hash !== '#admin') window.history.replaceState(null, '', '#admin')
-    } else if (window.location.hash === '#admin') {
-      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      if (window.location.pathname !== '/admin') window.history.replaceState(null, '', '/admin')
+    } else if (window.location.pathname === '/admin' || window.location.pathname === '/admin/' || window.location.hash === '#admin') {
+      window.history.replaceState(null, '', '/')
     }
     window.scrollTo({ top: 0 })
   }
