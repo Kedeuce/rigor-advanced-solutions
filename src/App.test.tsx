@@ -152,6 +152,14 @@ function imagesSection(name: string) {
   return section as HTMLElement
 }
 
+/** A nav button in the header — the footer has buttons with the same
+    labels, so an unscoped query would match two buttons. */
+function navButton(name: string) {
+  const nav = document.querySelector('.nav-row')
+  expect(nav).not.toBeNull()
+  return within(nav as HTMLElement).getByRole('button', { name })
+}
+
 describe('Image placement — images anywhere on every page', () => {
   it('renders an image added at the new after-why slot exactly between Why Rigor and How We Work', async () => {
     goToHome()
@@ -238,7 +246,7 @@ describe('Image placement — images anywhere on every page', () => {
     fireEvent.change(selects[2], { target: { value: 'left' } })
 
     // Preview the site: B renders floated left, large, at the after-why slot.
-    await user.click(screen.getByRole('button', { name: 'Home' }))
+    await user.click(navButton('Home'))
     await screen.findByText('Why Rigor')
     const figure = document.querySelector('figure.wrap-left.size-large') as HTMLElement
     expect(figure).not.toBeNull()
@@ -279,7 +287,7 @@ describe('Audit fixes — controls that did not work', () => {
     await user.type(input, 'Chatbots, Workflow Optimization')
     fireEvent.blur(input)
     // The list updates only after leaving the box (draft + commit).
-    await user.click(screen.getByRole('button', { name: 'Services' }))
+    await user.click(navButton('Services'))
     await screen.findByText('Services That Move Your Business Forward')
     // Scope to Service 1's detail: Service 4 also lists Chatbots by default.
     const heading = screen.getByText('AI Consultation and Strategy')
@@ -320,7 +328,7 @@ describe('Audit fixes — controls that did not work', () => {
     const logoInput = within(logoLabel.closest('.field') as HTMLElement).getAllByRole('textbox')[0] as HTMLInputElement
     await user.clear(logoInput)
     await user.type(logoInput, 'RG')
-    await user.click(screen.getByRole('button', { name: 'Home' }))
+    await user.click(navButton('Home'))
     await screen.findByText('Why Rigor')
     // One button per service card, all four showing the new text.
     expect(screen.getAllByText('Learn more')).toHaveLength(4)
@@ -332,7 +340,7 @@ describe('Audit fixes — controls that did not work', () => {
     await user.click(stepInput)
     await user.type(stepInput, '30')
     fireEvent.blur(stepInput)
-    await user.click(screen.getByRole('button', { name: 'Home' }))
+    await user.click(navButton('Home'))
     await screen.findByText('Why Rigor')
     const stepNum = document.querySelector('.step-num') as HTMLElement
     expect(stepNum).not.toBeNull()
@@ -356,7 +364,7 @@ describe('Audit fixes — controls that did not work', () => {
     await user.click(capInput)
     await user.type(capInput, '20')
     fireEvent.blur(capInput)
-    await user.click(screen.getByRole('button', { name: 'Home' }))
+    await user.click(navButton('Home'))
     await screen.findByText('Why Rigor')
     await waitFor(() => expect(screen.getByText('Caption here').style.fontSize).toBe('20px'))
   })
@@ -378,5 +386,126 @@ describe('Audit fixes — controls that did not work', () => {
         options: { emailRedirectTo: expect.stringContaining('/admin') },
       }),
     )
+  })
+})
+
+describe('Redesign — footer everywhere, hero buttons, stats strip, clean copy', () => {
+  const COPYRIGHT = '© 2026 Rigor Advanced Solutions. All rights reserved.'
+
+  it('renders the footer on all four public pages, with no phone link while phone and location are blank', async () => {
+    const user = userEvent.setup()
+    goToHome()
+    render(<App />)
+    await screen.findByText('Why Rigor')
+    expect(screen.getByText(COPYRIGHT)).not.toBeNull()
+    expect(screen.getByText('Explore')).not.toBeNull()
+    // Phone and location are blank by her order: the footer must not
+    // show an empty tap-to-call link or an empty location line.
+    expect(document.querySelector('.site-footer a[href^="tel:"]')).toBeNull()
+
+    await user.click(navButton('Services'))
+    await screen.findByText('Services That Move Your Business Forward')
+    expect(screen.getByText(COPYRIGHT)).not.toBeNull()
+
+    await user.click(navButton('About'))
+    await screen.findByText('Our Values')
+    expect(screen.getByText(COPYRIGHT)).not.toBeNull()
+
+    await user.click(navButton('Contact'))
+    await screen.findByText('Book a Consultation')
+    expect(screen.getByText(COPYRIGHT)).not.toBeNull()
+  })
+
+  it('renders the hero buttons and header button, and each one navigates where it should', async () => {
+    const user = userEvent.setup()
+    goToHome()
+    render(<App />)
+    await screen.findByText('Why Rigor')
+
+    await user.click(screen.getByRole('button', { name: 'Get Started' }))
+    await screen.findByText('Services That Move Your Business Forward')
+
+    await user.click(navButton('Home'))
+    await screen.findByText('Why Rigor')
+    await user.click(screen.getByRole('button', { name: 'Book a Demo' }))
+    await screen.findByText('Book a Consultation')
+
+    await user.click(navButton('Home'))
+    await screen.findByText('Why Rigor')
+    await user.click(screen.getByRole('button', { name: 'Talk to Us' }))
+    await screen.findByText('Book a Consultation')
+  })
+
+  it('shows the real stats strip and clean copy with no stray commas', async () => {
+    goToHome()
+    render(<App />)
+    await screen.findByText('Why Rigor')
+
+    const strip = document.querySelector('.stats-strip') as HTMLElement
+    expect(strip).not.toBeNull()
+    expect(strip.querySelectorAll('.stat')).toHaveLength(4)
+    expect(within(strip).getByText('50+')).not.toBeNull()
+    expect(within(strip).getByText('Projects Delivered')).not.toBeNull()
+    expect(within(strip).getByText('98%')).not.toBeNull()
+    expect(within(strip).getByText('Client Satisfaction')).not.toBeNull()
+    expect(within(strip).getByText('10+')).not.toBeNull()
+    expect(within(strip).getByText('Years of Experience')).not.toBeNull()
+    expect(within(strip).getByText('24/7')).not.toBeNull()
+    expect(within(strip).getByText('Support Available')).not.toBeNull()
+
+    // The old dash rule's stray commas are gone everywhere.
+    expect(screen.getByText('Unlock Growth. Automate. Innovate. Future Proof.')).not.toBeNull()
+    expect(document.body.textContent).not.toContain('Future, Proof')
+    expect(document.body.textContent).not.toContain('AI, Powered')
+    expect(document.body.textContent).not.toContain('four, step')
+    await userEvent.setup().click(navButton('Services'))
+    await screen.findByText('Services That Move Your Business Forward')
+    expect(screen.getByText('AI Powered Automation')).not.toBeNull()
+  })
+
+  it('fixes the stray commas in a saved row, not just in the defaults', async () => {
+    goToHome()
+    window.localStorage.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({
+        ...DEFAULT_SETTINGS,
+        home: {
+          ...DEFAULT_SETTINGS.home,
+          subhead: 'Unlock Growth. Automate. Innovate. Future, Proof.',
+          processIntro: 'A simple, four, step path from first conversation to a working AI system.',
+        },
+        services: {
+          ...DEFAULT_SETTINGS.services,
+          items: DEFAULT_SETTINGS.services.items.map((it) =>
+            it.name === 'AI Powered Automation' ? { ...it, name: 'AI, Powered Automation' } : it,
+          ),
+        },
+      }),
+    )
+    render(<App />)
+    await screen.findByText('Why Rigor')
+    expect(screen.getByText('Unlock Growth. Automate. Innovate. Future Proof.')).not.toBeNull()
+    expect(document.body.textContent).not.toContain('Future, Proof')
+  })
+
+  it('has Admin fields for the hero buttons, the header button and every stat — and editing a stat shows on the site', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('Business name')
+    expect(screen.getByText('Hero button, main (Get Started)')).not.toBeNull()
+    expect(screen.getByText('Hero button, second (Book a Demo)')).not.toBeNull()
+    expect(screen.getByText('Header button (Talk to Us)')).not.toBeNull()
+    expect(screen.getByText('Stat 1, number')).not.toBeNull()
+    expect(screen.getByText('Stat 1, label')).not.toBeNull()
+    expect(screen.getByText('Stat 4, number')).not.toBeNull()
+
+    const statLabel = screen.getByText('Stat 1, number')
+    const statInput = within(statLabel.closest('.field') as HTMLElement).getAllByRole('textbox')[0] as HTMLInputElement
+    await user.clear(statInput)
+    await user.type(statInput, '75+')
+    await user.click(navButton('Home'))
+    await screen.findByText('Why Rigor')
+    const strip = document.querySelector('.stats-strip') as HTMLElement
+    await waitFor(() => expect(within(strip).getByText('75+')).not.toBeNull())
   })
 })

@@ -863,6 +863,20 @@ export default function App() {
               <p className="subhead" style={{ fontSize: `clamp(18px, 2.5vw, ${fs('home.subhead', 24)}px)` }}>{s.home.subhead}</p>
               <p className="lede" style={{ fontSize: fs('home.intro', 18) }}>{s.home.intro}</p>
               {s.breakers?.showGoldLine !== false && <p className="gold-line" style={{ fontSize: fs('home.goldLine', 18) }}>{s.home.goldLine}</p>}
+              <div className="hero-cta">
+                <button className="btn" type="button" style={{ fontSize: fs('home.heroPrimary', 17) }} onClick={() => go('services')}>{s.home.heroPrimaryLabel}</button>
+                <button className="btn secondary" type="button" style={{ fontSize: fs('home.heroSecondary', 17) }} onClick={() => go('contact')}>{s.home.heroSecondaryLabel}</button>
+              </div>
+              {(s.home.stats?.length ?? 0) > 0 && (
+                <div className="stats-strip">
+                  {s.home.stats.map((st) => (
+                    <div className="stat" key={st.label}>
+                      <div className="stat-value" style={{ fontSize: fs('home.statsValue', 28) }}>{st.value}</div>
+                      <div className="stat-label" style={{ fontSize: fs('home.statsLabel', 13) }}>{st.label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             {s.heroImage ? <img className="hero-img" src={s.heroImage} alt="Glowing network globe" /> : heroSlotImages.length > 0 ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, flex: '0 1 340px', maxWidth: '100%', justifyContent: 'center', alignItems: 'center' }}>
@@ -1118,6 +1132,7 @@ export default function App() {
           <Field label="Menu label, Services" value={s.nav.services} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, services: v } }))} {...sizeProps('nav.services', 16)} />
           <Field label="Menu label, About" value={s.nav.about} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, about: v } }))} {...sizeProps('nav.about', 16)} />
           <Field label="Menu label, Contact" value={s.nav.contact} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, contact: v } }))} {...sizeProps('nav.contact', 16)} />
+          <Field label="Header button (Talk to Us)" value={s.headerCtaLabel} onChange={(v) => set((p) => ({ ...p, headerCtaLabel: v }))} {...sizeProps('header.cta', 15)} />
         </section>
 
         <section className="admin-section"><h2>Design, fonts and colours</h2>
@@ -1165,6 +1180,16 @@ export default function App() {
           <Field label="Subhead" value={s.home.subhead} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, subhead: v } }))} {...sizeProps('home.subhead', 24)} />
           <Field label="Intro" value={s.home.intro} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, intro: v } }))} {...sizeProps('home.intro', 18)} />
           <Field label="Gold line under the intro" value={s.home.goldLine} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, goldLine: v } }))} {...sizeProps('home.goldLine', 18)} />
+          <Field label="Hero button, main (Get Started)" value={s.home.heroPrimaryLabel} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, heroPrimaryLabel: v } }))} {...sizeProps('home.heroPrimary', 17)} />
+          <Field label="Hero button, second (Book a Demo)" value={s.home.heroSecondaryLabel} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, heroSecondaryLabel: v } }))} {...sizeProps('home.heroSecondary', 17)} />
+          <SizeField label="Stats value size (px)" value={settings.fontSizes?.['home.statsValue']} placeholder={28} onChange={(n) => setSize('home.statsValue', n)} />
+          <SizeField label="Stats label size (px)" value={settings.fontSizes?.['home.statsLabel']} placeholder={13} onChange={(n) => setSize('home.statsLabel', n)} />
+          {(s.home.stats ?? []).map((st, i) => (
+            <div key={i}>
+              <Field label={`Stat ${i + 1}, number`} value={st.value} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, stats: (p.home.stats ?? []).map((x, j) => (j === i ? { ...x, value: v } : x)) } }))} />
+              <Field label={`Stat ${i + 1}, label`} value={st.label} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, stats: (p.home.stats ?? []).map((x, j) => (j === i ? { ...x, label: v } : x)) } }))} />
+            </div>
+          ))}
           <Field label="Hero image (the globe on the home page — leave blank to hide it)" value={s.heroImage} onChange={(v) => set((p) => ({ ...p, heroImage: v }))} />
           {s.heroImage ? <img src={s.heroImage} alt="Hero preview" style={{ width: 120, height: 120, objectFit: 'contain', borderRadius: 12, border: '1px solid var(--border)', marginBottom: 14 }} /> : null}
           <div className="img-add" style={{ marginTop: 0, marginBottom: 14 }}>
@@ -1276,14 +1301,14 @@ export default function App() {
   }
 
   return (
-    <div style={{ ...vars, background: 'var(--bg)', minHeight: '100vh', color: 'var(--body)' }}>
+    <div className="app-root" style={{ ...vars, background: 'var(--bg)', minHeight: '100vh', color: 'var(--body)' }}>
       {view === 'admin' && (
         <div className="admin-bar"><div className="wrap">
           <span>Admin panel. <button className="linklike" onClick={() => go('home')}>Preview Site</button></span>
         </div></div>
       )}
       <header className="site-header" style={s.breakers?.showHeader === false ? { borderBottom: 'none' } : undefined}>
-        <div className="wrap">
+        <div className="wrap header-inner">
           <div className="brand-row">
             <div className="logo-mark" style={{ fontSize: fs('logo.mark', 20) }}>{s.logoMark}</div>
             <div>
@@ -1297,10 +1322,13 @@ export default function App() {
             {navBtn('about', s.nav.about)}
             {navBtn('contact', s.nav.contact)}
           </nav>
+          <div className="header-cta">
+            <button className="btn" type="button" style={{ fontSize: fs('header.cta', 15) }} onClick={() => go('contact')}>{s.headerCtaLabel}</button>
+          </div>
         </div>
       </header>
       <main>{page}</main>
-      {view === 'contact' && (
+      {view !== 'admin' && (
         <footer className="site-footer" style={s.breakers?.showFooter === false ? { borderTop: 'none' } : undefined}><div className="wrap"><div className="cols">
           <div><h3 style={{ fontSize: fs('brand.name', 18) }}>{s.businessName}</h3><p style={{ color: 'var(--gold)', fontSize: fs('tagline', bodyBase) }}>{s.tagline}</p></div>
           <div><h3 style={{ fontSize: fs('footer.exploreTitle', 18) }}>{s.footer.exploreTitle}</h3>
@@ -1310,7 +1338,10 @@ export default function App() {
             <button className="linklike" style={{ fontSize: fs('nav.contact', 15) }} onClick={() => go('contact')}>{s.nav.contact}</button></p>
           </div>
           <div><h3 style={{ fontSize: fs('footer.contactTitle', 18) }}>{s.footer.contactTitle}</h3>
-            <p><a href={`tel:${s.phoneTel}`} style={{ fontSize: fs('business.phoneDisplay', bodyBase) }}>{s.phoneDisplay}</a><br /><span style={{ fontSize: fs('contact.location', bodyBase) }}>{s.location}</span></p>
+            <p>
+              {s.phoneDisplay ? (<><a href={`tel:${s.phoneTel}`} style={{ fontSize: fs('business.phoneDisplay', bodyBase) }}>{s.phoneDisplay}</a><br /></>) : null}
+              {s.location ? <span style={{ fontSize: fs('contact.location', bodyBase) }}>{s.location}</span> : null}
+            </p>
           </div>
         </div><p style={{ marginTop: 24, fontSize: fs('footer.copyright', bodyBase) }}>{s.footer.copyright}</p></div></footer>
       )}
