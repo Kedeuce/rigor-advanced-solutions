@@ -44,14 +44,39 @@ const SERVICE_ICONS: ReactNode[] = [
  * top slot uses that, because its floated images render inside the hero
  * text instead, where the hero headline and intro wrap around them.)
  */
+/** The pixel width each Size preset stands for, shown as the hint in the
+    Width box. "Full" has no fixed width, so it shows no hint. */
+const PRESET_WIDTHS: Record<ImageSize, number | undefined> = { small: 280, medium: 480, large: 720, full: undefined }
+
+/**
+ * An image's exact box size. A set Width/Height overrides the Size
+ * preset for that image: width is capped at the page width (min(w, 100%))
+ * so an explicit width can never overflow a phone screen; height crops
+ * the photo to that height (object-fit: cover). With only one set, the
+ * other side keeps the preset / the photo's own proportions.
+ */
+function imgBoxStyle(img: SiteImage): { figure: React.CSSProperties; img: React.CSSProperties } {
+  const figure: React.CSSProperties = {}
+  const imgStyle: React.CSSProperties = {}
+  if (img.width) {
+    figure.width = `min(${img.width}px, 100%)`
+    figure.maxWidth = `min(${img.width}px, 100%)`
+  }
+  if (img.height) {
+    imgStyle.height = `${img.height}px`
+    imgStyle.objectFit = 'cover'
+  }
+  return { figure, img: imgStyle }
+}
+
 function FloatImages({ page, slot, images, captionSize = 14 }: { page: PageKey; slot: string; images: SiteImage[]; captionSize?: number }) {
   const list = (images ?? []).filter((im) => (im.position || DEFAULT_SLOT[page]) === slot && (im.wrap === 'left' || im.wrap === 'right'))
   if (list.length === 0) return null
   return (
     <>
       {list.map((img) => (
-        <figure className={`slot-img size-${img.size || 'medium'} wrap-${img.wrap}`} key={img.id}>
-          <img src={img.url} alt={img.alt || 'Image'} loading="lazy" />
+        <figure className={`slot-img size-${img.size || 'medium'} wrap-${img.wrap}`} key={img.id} style={imgBoxStyle(img).figure}>
+          <img src={img.url} alt={img.alt || 'Image'} loading="lazy" style={imgBoxStyle(img).img} />
           {img.caption ? <figcaption style={{ fontSize: captionSize }}>{img.caption}</figcaption> : null}
         </figure>
       ))}
@@ -69,8 +94,8 @@ function SlotImages({ page, slot, images, className = '', includeFloated = true,
       {normal.length > 0 && (
         <div className={`slot-images ${className}`}>
           {normal.map((img) => (
-            <figure className={`slot-img size-${img.size || 'medium'}`} key={img.id}>
-              <img src={img.url} alt={img.alt || 'Image'} loading="lazy" />
+            <figure className={`slot-img size-${img.size || 'medium'}`} key={img.id} style={imgBoxStyle(img).figure}>
+              <img src={img.url} alt={img.alt || 'Image'} loading="lazy" style={imgBoxStyle(img).img} />
               {img.caption ? <figcaption style={{ fontSize: captionSize }}>{img.caption}</figcaption> : null}
             </figure>
           ))}
@@ -463,6 +488,43 @@ export default function App() {
   /** The image currently being dragged in an Images editor (HTML5 drag and drop). */
   const [dragImg, setDragImg] = useState<{ page: PageKey; id: string } | null>(null)
 
+  /**
+   * Visitor's Mobile / Desktop view choice. 'auto' (default, nothing
+   * saved) is the normal responsive layout for the device. The choice
+   * is a visitor preference, so it lives in this browser's localStorage
+   * only — it is not part of the site settings and is never saved to
+   * Supabase. 'desktop' on a phone sets a fixed 1024px viewport so the
+   * phone renders the desktop site scaled down; 'mobile' on a wide
+   * screen constrains the site to a phone-width column (view-mobile).
+   */
+  type ViewMode = 'auto' | 'mobile' | 'desktop'
+  const VIEW_MODE_KEY = 'ras-view-mode'
+  const readViewMode = (): ViewMode => {
+    try {
+      const v = window.localStorage.getItem(VIEW_MODE_KEY)
+      return v === 'mobile' || v === 'desktop' ? v : 'auto'
+    } catch { return 'auto' }
+  }
+  const [viewMode, setViewMode] = useState<ViewMode>(readViewMode)
+  const chooseViewMode = (m: ViewMode) => {
+    setViewMode(m)
+    try {
+      if (m === 'auto') window.localStorage.removeItem(VIEW_MODE_KEY)
+      else window.localStorage.setItem(VIEW_MODE_KEY, m)
+    } catch { /* private mode: the choice just doesn't stick */ }
+  }
+  useEffect(() => {
+    // Keep the viewport meta in step with the choice (create it if the
+    // page has none, e.g. in tests). Desktop = fixed 1024px layout.
+    let meta = document.querySelector('meta[name="viewport"]')
+    if (!meta) {
+      meta = document.createElement('meta')
+      meta.setAttribute('name', 'viewport')
+      document.head.appendChild(meta)
+    }
+    meta.setAttribute('content', viewMode === 'desktop' ? 'width=1024' : 'width=device-width, initial-scale=1')
+  }, [viewMode])
+
   // Admin is hidden from public visitors: it opens only via the /admin
   // path (e.g. https://rigoradvancedsolutions.com/admin) or the #admin
   // hash (e.g. https://rigoradvancedsolutions.com/#admin). The /admin path
@@ -784,6 +846,30 @@ export default function App() {
                   ))}
                 </select>
               </div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <div className="field" style={{ flex: '1 1 120px', minWidth: 120 }}>
+                  <label>Width (px) — overrides Size</label>
+                  <DraftSizeInput
+                    value={img.width}
+                    placeholder={PRESET_WIDTHS[img.size || 'medium']}
+                    min={20}
+                    max={2000}
+                    onCommit={(n) => updateImage(page, img.id, { width: n })}
+                    title="Exact box width in pixels — leave blank to use the Size preset above"
+                  />
+                </div>
+                <div className="field" style={{ flex: '1 1 120px', minWidth: 120 }}>
+                  <label>Height (px) — overrides Size</label>
+                  <DraftSizeInput
+                    value={img.height}
+                    placeholder={undefined}
+                    min={20}
+                    max={2000}
+                    onCommit={(n) => updateImage(page, img.id, { height: n })}
+                    title="Exact box height in pixels — leave blank to keep the photo's own height"
+                  />
+                </div>
+              </div>
               <div className="field">
                 <label>Text wrap</label>
                 <select value={img.wrap || 'none'} disabled={(img.position || DEFAULT_SLOT[page]) === 'hero'} title={(img.position || DEFAULT_SLOT[page]) === 'hero' ? 'Text wrap does not apply to images beside the hero text' : undefined} onChange={(e) => updateImage(page, img.id, { wrap: e.target.value as ImageWrap })}>
@@ -880,7 +966,7 @@ export default function App() {
             </div>
             {s.heroImage ? <img className="hero-img" src={s.heroImage} alt="Glowing network globe" /> : heroSlotImages.length > 0 ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, flex: '0 1 340px', maxWidth: '100%', justifyContent: 'center', alignItems: 'center' }}>
-                {heroSlotImages.map((im) => <img key={im.id} className="hero-img" src={im.url} alt={im.alt || 'Image'} />)}
+                {heroSlotImages.map((im) => { const box = imgBoxStyle(im); return <img key={im.id} className="hero-img" src={im.url} alt={im.alt || 'Image'} style={{ ...box.figure, ...box.img }} /> })}
               </div>
             ) : null}
           </div>
@@ -1138,6 +1224,8 @@ export default function App() {
           <Field label="Menu label, About" value={s.nav.about} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, about: v } }))} {...sizeProps('nav.about', 16)} />
           <Field label="Menu label, Contact" value={s.nav.contact} onChange={(v) => set((p) => ({ ...p, nav: { ...p.nav, contact: v } }))} {...sizeProps('nav.contact', 16)} />
           <Field label="Header button (Talk to Us)" value={s.headerCtaLabel} onChange={(v) => set((p) => ({ ...p, headerCtaLabel: v }))} {...sizeProps('header.cta', 15)} />
+          <Field label="View switcher: Mobile button" value={s.viewSwitchLabels?.mobile ?? 'Mobile'} onChange={(v) => set((p) => ({ ...p, viewSwitchLabels: { ...DEFAULT_SETTINGS.viewSwitchLabels, ...(p.viewSwitchLabels ?? {}), mobile: v } }))} />
+          <Field label="View switcher: Desktop button" value={s.viewSwitchLabels?.desktop ?? 'Desktop'} onChange={(v) => set((p) => ({ ...p, viewSwitchLabels: { ...DEFAULT_SETTINGS.viewSwitchLabels, ...(p.viewSwitchLabels ?? {}), desktop: v } }))} />
         </section>
 
         <section className="admin-section"><h2>Design, fonts and colours</h2>
@@ -1309,7 +1397,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-root" style={{ ...vars, background: 'var(--bg)', minHeight: '100vh', color: 'var(--body)' }}>
+    <div className={`app-root view-${viewMode}`} style={{ ...vars, background: 'var(--bg)', minHeight: '100vh', color: 'var(--body)' }}>
       {view === 'admin' && (
         <div className="admin-bar"><div className="wrap">
           <span>Admin panel. <button className="linklike" onClick={() => go('home')}>Preview Site</button></span>
@@ -1330,13 +1418,29 @@ export default function App() {
             {navBtn('about', s.nav.about)}
             {navBtn('contact', s.nav.contact)}
           </nav>
+          <div className="view-switch" role="group" aria-label="Mobile or desktop view">
+            <button
+              type="button"
+              className={viewMode === 'mobile' ? 'active' : ''}
+              aria-pressed={viewMode === 'mobile'}
+              title={viewMode === 'mobile' ? 'Phone view is on — tap again for the automatic view' : 'Show the phone view'}
+              onClick={() => chooseViewMode(viewMode === 'mobile' ? 'auto' : 'mobile')}
+            >{s.viewSwitchLabels?.mobile ?? 'Mobile'}</button>
+            <button
+              type="button"
+              className={viewMode === 'desktop' ? 'active' : ''}
+              aria-pressed={viewMode === 'desktop'}
+              title={viewMode === 'desktop' ? 'Desktop view is on — tap again for the automatic view' : 'Show the desktop view'}
+              onClick={() => chooseViewMode(viewMode === 'desktop' ? 'auto' : 'desktop')}
+            >{s.viewSwitchLabels?.desktop ?? 'Desktop'}</button>
+          </div>
           <div className="header-cta">
             <button className="btn" type="button" style={{ fontSize: fs('header.cta', 15) }} onClick={() => go('contact')}>{s.headerCtaLabel}</button>
           </div>
         </div>
       </header>
       <main>{page}</main>
-      {view !== 'admin' && (
+      {view === 'contact' && (
         <footer className="site-footer" style={s.breakers?.showFooter === false ? { borderTop: 'none' } : undefined}><div className="wrap"><div className="cols">
           <div><h3 style={{ fontSize: fs('brand.name', 18) }}>{s.businessName}</h3><p style={{ color: 'var(--gold)', fontSize: fs('tagline', bodyBase) }}>{s.tagline}</p></div>
           <div><h3 style={{ fontSize: fs('footer.exploreTitle', 18) }}>{s.footer.exploreTitle}</h3>

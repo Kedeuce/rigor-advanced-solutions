@@ -396,31 +396,38 @@ describe('Audit fixes — controls that did not work', () => {
   })
 })
 
-describe('Redesign — footer everywhere, hero buttons, stats strip, clean copy', () => {
+describe('Redesign — hero buttons, stats strip, clean copy', () => {
   const COPYRIGHT = '© 2026 Rigor Advanced Solutions. All rights reserved.'
 
-  it('renders the footer on all four public pages, with no phone link while phone and location are blank', async () => {
+  it('renders the footer ONLY on Contact — Home, Services and About end after their last section, with no footer and no closing band', async () => {
     const user = userEvent.setup()
     goToHome()
     render(<App />)
     await screen.findByText('Why Rigor')
-    expect(screen.getByText(COPYRIGHT)).not.toBeNull()
-    expect(screen.getByText('Explore')).not.toBeNull()
-    // Phone and location are blank by her order: the footer must not
-    // show an empty tap-to-call link or an empty location line.
-    expect(document.querySelector('.site-footer a[href^="tel:"]')).toBeNull()
+    expect(document.querySelector('.site-footer')).toBeNull()
+    expect(document.querySelector('.closing')).toBeNull()
+    expect(screen.queryByText(COPYRIGHT)).toBeNull()
 
     await user.click(navButton('Services'))
     await screen.findByText('Services That Move Your Business Forward')
-    expect(screen.getByText(COPYRIGHT)).not.toBeNull()
+    expect(document.querySelector('.site-footer')).toBeNull()
+    expect(document.querySelector('.closing')).toBeNull()
+    expect(screen.queryByText(COPYRIGHT)).toBeNull()
 
     await user.click(navButton('About'))
     await screen.findByText('Our Values')
-    expect(screen.getByText(COPYRIGHT)).not.toBeNull()
+    expect(document.querySelector('.site-footer')).toBeNull()
+    expect(document.querySelector('.closing')).toBeNull()
+    expect(screen.queryByText(COPYRIGHT)).toBeNull()
 
     await user.click(navButton('Contact'))
     await screen.findByText('Book a Consultation')
+    expect(document.querySelector('.site-footer')).not.toBeNull()
     expect(screen.getByText(COPYRIGHT)).not.toBeNull()
+    expect(document.querySelector('.closing')).not.toBeNull()
+    // Phone and location are blank by her order: the footer must not
+    // show an empty tap-to-call link or an empty location line.
+    expect(document.querySelector('.site-footer a[href^="tel:"]')).toBeNull()
   })
 
   it('renders the hero buttons and header button, and each one navigates where it should', async () => {
@@ -604,5 +611,220 @@ describe('Follow-up fixes — business email and card spacing', () => {
     const section = document.querySelector('section.section') as HTMLElement
     expect(section).not.toBeNull()
     expect(section.style.paddingBottom).toBe('')
+  })
+})
+
+describe('Footer only on Contact + adjustable image box size', () => {
+  const WIDTH_TITLE = 'Exact box width in pixels — leave blank to use the Size preset above'
+  const HEIGHT_TITLE = "Exact box height in pixels — leave blank to keep the photo's own height"
+
+  it('has Width and Height boxes for every image on every page, beside the Size preset, plus all the other editor controls', async () => {
+    seedSettings({
+      home: [{ id: 'img-h', url: 'https://example.com/h.jpg', alt: 'Home', position: 'after-why', size: 'medium' }],
+      services: [{ id: 'img-s', url: 'https://example.com/s.jpg', alt: 'Services', position: 'after-intro', size: 'medium' }],
+      about: [{ id: 'img-a', url: 'https://example.com/a.jpg', alt: 'About', position: 'after-intro', size: 'medium' }],
+      contact: [{ id: 'img-c', url: 'https://example.com/c.jpg', alt: 'Contact', position: 'after-intro', size: 'medium' }],
+    })
+    render(<App />)
+    await screen.findByText('Business name')
+
+    for (const [sectionName, url] of [
+      ['Home page images', 'https://example.com/h.jpg'],
+      ['Services page images', 'https://example.com/s.jpg'],
+      ['About page images', 'https://example.com/a.jpg'],
+      ['Contact page images', 'https://example.com/c.jpg'],
+    ] as const) {
+      const section = imagesSection(sectionName)
+      const row = (document.querySelector(`img[src="${url}"]`) as HTMLElement).closest('.img-row') as HTMLElement
+      expect(row).not.toBeNull()
+      // The three dropdowns: Where on the page, Size, Text wrap.
+      expect(within(row).getAllByRole('combobox')).toHaveLength(3)
+      // Width and Height boxes, right beside the Size preset.
+      expect(within(row).getByTitle(WIDTH_TITLE)).not.toBeNull()
+      expect(within(row).getByTitle(HEIGHT_TITLE)).not.toBeNull()
+      // Move up / Move down (the touch way to reorder), Replace, Delete.
+      expect(within(row).getByRole('button', { name: /Move up/ })).not.toBeNull()
+      expect(within(row).getByRole('button', { name: /Move down/ })).not.toBeNull()
+      expect(within(row).getByText('Replace photo')).not.toBeNull()
+      expect(within(row).getByRole('button', { name: 'Delete image' })).not.toBeNull()
+      expect(section).not.toBeNull()
+    }
+  })
+
+  it('typing a Width and Height in Admin changes the rendered image box, and clearing them falls back to the preset', async () => {
+    const user = userEvent.setup()
+    seedSettings({
+      home: [{ id: 'img-box', url: 'https://example.com/box.jpg', alt: 'Box photo', position: 'after-why', size: 'medium' }],
+    })
+    render(<App />)
+    await screen.findByText('Business name')
+    const row = (document.querySelector('img[src="https://example.com/box.jpg"]') as HTMLElement).closest('.img-row') as HTMLElement
+    const widthInput = within(row).getByTitle(WIDTH_TITLE) as HTMLInputElement
+    const heightInput = within(row).getByTitle(HEIGHT_TITLE) as HTMLInputElement
+    // The Width box hints at the preset size (medium = 480) while empty.
+    expect(widthInput.value).toBe('')
+    expect(widthInput.placeholder).toBe('480')
+
+    // Type digit by digit like on a phone: nothing commits until blur.
+    await user.click(widthInput)
+    await user.type(widthInput, '300')
+    expect(widthInput.value).toBe('300')
+    expect(document.activeElement).toBe(widthInput)
+    fireEvent.blur(widthInput)
+    await waitFor(() => expect(widthInput.value).toBe('300'))
+    await user.click(heightInput)
+    await user.type(heightInput, '200')
+    fireEvent.blur(heightInput)
+    await waitFor(() => expect(heightInput.value).toBe('200'))
+
+    // Preview the site: the image box is now exactly 300 x 200.
+    await user.click(navButton('Home'))
+    await screen.findByText('Why Rigor')
+    const img = document.querySelector('img[src="https://example.com/box.jpg"]') as HTMLImageElement
+    expect(img).not.toBeNull()
+    const figure = img.closest('figure') as HTMLElement
+    expect(figure.style.maxWidth).toBe('min(300px, 100%)')
+    expect(img.style.height).toBe('200px')
+    expect(img.style.objectFit).toBe('cover')
+
+    // Clearing both boxes falls back to the Size preset (medium = 480).
+    await user.click(navButton('Home'))
+    await screen.findByText('Why Rigor')
+    // Go back to Admin via the URL, then clear the boxes.
+    goToAdmin()
+    render(<App />)
+    await screen.findByText('Business name')
+    const row2 = (document.querySelector('img[src="https://example.com/box.jpg"]') as HTMLElement).closest('.img-row') as HTMLElement
+    const widthInput2 = within(row2).getByTitle(WIDTH_TITLE) as HTMLInputElement
+    await user.clear(widthInput2)
+    fireEvent.blur(widthInput2)
+    await waitFor(() => expect(widthInput2.value).toBe(''))
+    await user.click(navButton('Home'))
+    await screen.findByText('Why Rigor')
+    const img2 = document.querySelector('img[src="https://example.com/box.jpg"]') as HTMLImageElement
+    const figure2 = img2.closest('figure') as HTMLElement
+    expect(figure2.style.maxWidth).toBe('')
+    expect(figure2.className).toContain('size-medium')
+  })
+
+  it('Move up swaps two images on the public page itself', async () => {
+    const user = userEvent.setup()
+    seedSettings({
+      home: [
+        { id: 'img-1', url: 'https://example.com/one.jpg', alt: 'One', position: 'after-why', size: 'medium' },
+        { id: 'img-2', url: 'https://example.com/two.jpg', alt: 'Two', position: 'after-why', size: 'medium' },
+      ],
+    })
+    render(<App />)
+    await screen.findByText('Business name')
+    const row2 = (document.querySelector('img[src="https://example.com/two.jpg"]') as HTMLElement).closest('.img-row') as HTMLElement
+    await user.click(within(row2).getByRole('button', { name: /Move up/ }))
+    await waitFor(() => {
+      const thumbs = Array.from(document.querySelectorAll('.img-thumb')).map((t) => (t as HTMLImageElement).src)
+      expect(thumbs).toEqual(['https://example.com/two.jpg', 'https://example.com/one.jpg'])
+    })
+
+    // The swap shows on the live page too, not just in the Admin list.
+    await user.click(navButton('Home'))
+    await screen.findByText('Why Rigor')
+    const shown = Array.from(document.querySelectorAll('.slot-images img')).map((i) => (i as HTMLImageElement).src)
+    expect(shown).toEqual(['https://example.com/two.jpg', 'https://example.com/one.jpg'])
+  })
+})
+
+describe('Mobile / Desktop view switcher', () => {
+  const VIEW_MODE_KEY = 'ras-view-mode'
+  const htmlText = readFileSync(join(process.cwd(), 'index.html'), 'utf-8')
+
+  it('has the viewport meta tag in index.html, so a phone gets the responsive layout, not a scaled desktop page', () => {
+    expect(htmlText).toContain('<meta name="viewport" content="width=device-width, initial-scale=1')
+  })
+
+  it('renders the Mobile / Desktop switcher in the header, and choosing Desktop sets the desktop viewport and remembers it', async () => {
+    const user = userEvent.setup()
+    goToHome()
+    render(<App />)
+    await screen.findByText('Why Rigor')
+
+    const mobileBtn = screen.getByRole('button', { name: 'Mobile' })
+    const desktopBtn = screen.getByRole('button', { name: 'Desktop' })
+    expect(mobileBtn).not.toBeNull()
+    expect(desktopBtn).not.toBeNull()
+    // Default (nothing saved) is Auto: normal viewport, no forced mode.
+    expect(window.localStorage.getItem(VIEW_MODE_KEY)).toBeNull()
+    expect(document.querySelector('meta[name="viewport"]')?.getAttribute('content')).toBe('width=device-width, initial-scale=1')
+    expect(document.querySelector('.app-root')?.className).toContain('view-auto')
+
+    await user.click(desktopBtn)
+    await waitFor(() => expect(window.localStorage.getItem(VIEW_MODE_KEY)).toBe('desktop'))
+    expect(document.querySelector('meta[name="viewport"]')?.getAttribute('content')).toBe('width=1024')
+    expect(document.querySelector('.app-root')?.className).toContain('view-desktop')
+    expect(desktopBtn.getAttribute('aria-pressed')).toBe('true')
+
+    // Tapping the active button again goes back to the automatic view.
+    await user.click(desktopBtn)
+    await waitFor(() => expect(window.localStorage.getItem(VIEW_MODE_KEY)).toBeNull())
+    expect(document.querySelector('meta[name="viewport"]')?.getAttribute('content')).toBe('width=device-width, initial-scale=1')
+    expect(document.querySelector('.app-root')?.className).toContain('view-auto')
+  })
+
+  it('choosing Mobile constrains the site to a phone-width column and remembers it', async () => {
+    const user = userEvent.setup()
+    goToHome()
+    render(<App />)
+    await screen.findByText('Why Rigor')
+
+    await user.click(screen.getByRole('button', { name: 'Mobile' }))
+    await waitFor(() => expect(window.localStorage.getItem(VIEW_MODE_KEY)).toBe('mobile'))
+    expect(document.querySelector('.app-root')?.className).toContain('view-mobile')
+    // The forced phone layout is in the shipped stylesheet: a centred
+    // 480px column with the same single-column grids a real phone gets.
+    expect(cssText).toContain('.app-root.view-mobile .wrap { max-width: 480px; }')
+    expect(cssText).toContain('.app-root.view-mobile .cards, .app-root.view-mobile .steps { grid-template-columns: 1fr; }')
+    expect(cssText).toContain('.app-root.view-mobile .two-col, .app-root.view-mobile .info-cards, .app-root.view-mobile .site-footer .cols { grid-template-columns: 1fr; }')
+  })
+
+  it('remembers a saved choice across a fresh load', async () => {
+    window.localStorage.setItem(VIEW_MODE_KEY, 'desktop')
+    goToHome()
+    render(<App />)
+    await screen.findByText('Why Rigor')
+    expect(document.querySelector('meta[name="viewport"]')?.getAttribute('content')).toBe('width=1024')
+    expect(document.querySelector('.app-root')?.className).toContain('view-desktop')
+    expect(screen.getByRole('button', { name: 'Desktop' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('has Admin fields for the switcher labels, and editing one renames the header button', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('Business name')
+    expect(screen.getByText('View switcher: Mobile button')).not.toBeNull()
+    expect(screen.getByText('View switcher: Desktop button')).not.toBeNull()
+
+    const label = screen.getByText('View switcher: Desktop button')
+    const input = within(label.closest('.field') as HTMLElement).getByRole('textbox') as HTMLInputElement
+    await user.clear(input)
+    await user.type(input, 'PC view')
+    await user.click(navButton('Home'))
+    await screen.findByText('Why Rigor')
+    expect(screen.getByRole('button', { name: 'PC view' })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Desktop' })).toBeNull()
+  })
+
+  it('keeps the 390px phone layout to one column with 44px tap targets and no horizontal scroll', () => {
+    // jsdom has no layout engine, so the shipped stylesheet is what the
+    // suite can check: every multi-column grid collapses at phone widths.
+    expect(cssText).toContain('@media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }')
+    expect(cssText).toContain('@media (max-width: 560px) { .steps { grid-template-columns: 1fr; } }')
+    expect(cssText).toContain('@media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }')
+    expect(cssText).toContain('@media (max-width: 700px) { .info-cards { grid-template-columns: 1fr; } }')
+    expect(cssText).toContain('@media (max-width: 700px) { .site-footer .cols { grid-template-columns: 1fr; } }')
+    expect(cssText).toContain('@media (max-width: 700px) {')
+    expect(cssText).toContain('html, body { margin: 0; padding: 0; overflow-x: clip; }')
+    // Tap targets: nav buttons 44px, main buttons 52px, switcher 44px,
+    // footer links 44px.
+    expect(cssText).toContain('.nav-row button { background: transparent; border: 1px solid transparent; color: var(--body); font-size: 16px; font-weight: 600; padding: 10px 16px; min-height: 44px;')
+    expect(cssText).toContain('.view-switch button { background: transparent; border: none; color: var(--body); font-size: 13px; font-weight: 700; padding: 10px 14px; min-height: 44px;')
+    expect(cssText).toContain('.site-footer .linklike { padding: 12px 0; min-height: 44px; }')
   })
 })
