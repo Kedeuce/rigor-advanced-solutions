@@ -19,7 +19,7 @@ function normalizeImages(page: PageKey, list: unknown): SiteImage[] {
 function mergeWithDefaults(raw: unknown): SiteSettings {
   if (!raw || typeof raw !== 'object') return DEFAULT_SETTINGS
   // Deep merge so older saved settings still get any new fields.
-  return {
+  const merged: SiteSettings = {
     ...DEFAULT_SETTINGS,
     ...(raw as Partial<SiteSettings>),
     colors: { ...DEFAULT_SETTINGS.colors, ...((raw as SiteSettings).colors ?? {}) },
@@ -31,8 +31,17 @@ function mergeWithDefaults(raw: unknown): SiteSettings {
       ...((raw as SiteSettings).home ?? {}),
       whyItems: ((raw as SiteSettings).home?.whyItems ?? DEFAULT_SETTINGS.home.whyItems) as SiteSettings['home']['whyItems'],
       processSteps: ((raw as SiteSettings).home?.processSteps ?? DEFAULT_SETTINGS.home.processSteps) as SiteSettings['home']['processSteps'],
+      stats: ((raw as SiteSettings).home?.stats ?? DEFAULT_SETTINGS.home.stats) as SiteSettings['home']['stats'],
     },
-    services: { ...DEFAULT_SETTINGS.services, ...((raw as SiteSettings).services ?? {}) },
+    services: {
+      ...DEFAULT_SETTINGS.services,
+      ...((raw as SiteSettings).services ?? {}),
+      items: (((raw as SiteSettings).services?.items ?? DEFAULT_SETTINGS.services.items) as SiteSettings['services']['items']).map((it) => ({
+        ...it,
+        // The old replace-every-dash rule left stray commas in saved text.
+        name: it.name.replace('AI, Powered Automation', 'AI Powered Automation'),
+      })),
+    },
     about: {
       ...DEFAULT_SETTINGS.about,
       ...((raw as SiteSettings).about ?? {}),
@@ -49,6 +58,10 @@ function mergeWithDefaults(raw: unknown): SiteSettings {
       contact: normalizeImages('contact', (raw as SiteSettings).images?.contact),
     },
   }
+  // The old replace-every-dash rule left stray commas in saved text — fix them here too.
+  merged.home.subhead = merged.home.subhead.replace('Future, Proof.', 'Future Proof.')
+  merged.home.processIntro = merged.home.processIntro.replace('A simple, four, step path', 'A simple four step path')
+  return merged
 }
 
 export async function loadSettings(): Promise<SiteSettings> {

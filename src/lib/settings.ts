@@ -16,6 +16,12 @@ export interface ProcessStep {
   text: string
 }
 
+/** One item in the Home stats strip under the hero buttons. */
+export interface StatItem {
+  value: string
+  label: string
+}
+
 export type ImageSize = 'small' | 'medium' | 'large' | 'full'
 
 export const IMAGE_SIZES: { value: ImageSize; label: string }[] = [
@@ -117,6 +123,8 @@ export interface SiteSettings {
   /** Letters in the logo badge in the header (e.g. RAS). */
   logoMark: string
   tagline: string
+  /** Label of the "Talk to Us" button in the header (goes to Contact). */
+  headerCtaLabel: string
   phoneDisplay: string
   phoneTel: string
   location: string
@@ -143,6 +151,12 @@ export interface SiteSettings {
     subhead: string
     intro: string
     goldLine: string
+    /** Label of the primary hero button (goes to Services). */
+    heroPrimaryLabel: string
+    /** Label of the secondary hero button (goes to Contact). */
+    heroSecondaryLabel: string
+    /** The stats strip under the hero buttons. */
+    stats: StatItem[]
     servicesLabel: string
     /** Text of the "See full details" link under each service card on Home. */
     seeDetails: string
@@ -209,6 +223,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   businessName: 'Rigor Advanced Solutions',
   logoMark: 'RAS',
   tagline: "Empowering Tomorrow's Leaders With AI Technology",
+  headerCtaLabel: 'Talk to Us',
   phoneDisplay: '',
   phoneTel: '',
   location: '',
@@ -229,10 +244,18 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   home: {
     eyebrow: 'RIGOR ADVANCED SOLUTIONS',
     headline: 'Revolutionize Your Business With Intelligent Solutions',
-    subhead: 'Unlock Growth. Automate. Innovate. Future, Proof.',
+    subhead: 'Unlock Growth. Automate. Innovate. Future Proof.',
     intro:
       'Rigor Advanced Solutions helps ambitious businesses work smarter with artificial intelligence. We design practical AI systems that save time, cut busywork, and turn your data into decisions you can act on, today, not someday.',
     goldLine: 'Practical AI, built for real businesses, delivered with care.',
+    heroPrimaryLabel: 'Get Started',
+    heroSecondaryLabel: 'Book a Demo',
+    stats: [
+      { value: '50+', label: 'Projects Delivered' },
+      { value: '98%', label: 'Client Satisfaction' },
+      { value: '10+', label: 'Years of Experience' },
+      { value: '24/7', label: 'Support Available' },
+    ],
     servicesLabel: 'What We Do',
     seeDetails: 'See full details',
     whyTitle: 'Why Rigor',
@@ -244,7 +267,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
       { title: 'Support That Stays', text: 'We stay with you after launch, tuning, improving, and supporting the systems we build, as your business grows.' },
     ],
     processTitle: 'How We Work',
-    processIntro: 'A simple, four, step path from first conversation to a working AI system.',
+    processIntro: 'A simple four step path from first conversation to a working AI system.',
     processSteps: [
       { title: 'Discover', text: 'We listen first. We map your goals, your processes, and where AI can make the biggest difference.' },
       { title: 'Design', text: 'We design a tailored roadmap, with clear scope, clear pricing, and clear outcomes before any building starts.' },
@@ -284,7 +307,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
         includes: ['Big Data Processing', 'Actionable Intelligence', 'Machine Learning', 'Clear Dashboards and Reports'],
       },
       {
-        name: 'AI, Powered Automation',
+        name: 'AI Powered Automation',
         short: 'Automate repetitive processes and boost efficiency with intelligent automation.',
         detail:
           'Repetitive tasks eat your team’s time and energy. We automate the routine work, from intake and follow ups to reporting and customer replies, so your people can focus on the work only people can do.',
