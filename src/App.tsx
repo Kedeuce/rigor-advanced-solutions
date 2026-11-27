@@ -1004,7 +1004,7 @@ export default function App() {
           </article>
           <article className="info-card">
             <h2 style={{ fontSize: fs('contact.emailCardTitle', Math.round(headingBase * 0.63)) }}>{s.contact.emailCardTitle}</h2>
-            {s.businessEmail ? <a href={`mailto:${s.businessEmail}`} style={{ fontSize: fs('business.emailDisplay', 22), overflowWrap: 'anywhere' }}>{s.businessEmail}</a> : null}
+            {s.businessEmail ? <a href={`mailto:${s.businessEmail}`} style={{ fontSize: fs('business.emailDisplay', 17), overflowWrap: 'break-word' }}>{s.businessEmail}</a> : null}
             <p style={{ fontSize: fs('contact.emailCardNote', bodyBase) }}>{s.contact.emailCardNote}</p>
           </article>
           <article className="info-card">
@@ -1348,7 +1348,7 @@ export default function App() {
           <div><h3 style={{ fontSize: fs('footer.contactTitle', 18) }}>{s.footer.contactTitle}</h3>
             <p>
               {s.phoneDisplay ? (<><a href={`tel:${s.phoneTel}`} style={{ fontSize: fs('business.phoneDisplay', bodyBase) }}>{s.phoneDisplay}</a><br /></>) : null}
-              {s.businessEmail ? (<><a href={`mailto:${s.businessEmail}`} style={{ fontSize: fs('business.emailDisplay', bodyBase), overflowWrap: 'anywhere' }}>{s.businessEmail}</a><br /></>) : null}
+              {s.businessEmail ? (<><a href={`mailto:${s.businessEmail}`} style={{ fontSize: fs('business.emailDisplay', bodyBase), overflowWrap: 'break-word' }}>{s.businessEmail}</a><br /></>) : null}
               {s.location ? <span style={{ fontSize: fs('contact.location', bodyBase) }}>{s.location}</span> : null}
             </p>
           </div>
