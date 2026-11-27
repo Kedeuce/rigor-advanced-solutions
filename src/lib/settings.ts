@@ -127,6 +127,8 @@ export interface SiteSettings {
   headerCtaLabel: string
   phoneDisplay: string
   phoneTel: string
+  /** Business email shown on the Email Us card and in the footer. Blank hides it. */
+  businessEmail: string
   location: string
   colors: {
     background: string
@@ -185,6 +187,8 @@ export interface SiteSettings {
     intro: string
     phoneCardTitle: string
     phoneCardNote: string
+    emailCardTitle: string
+    emailCardNote: string
     locationCardTitle: string
     locationCardNote: string
     formTitle: string
@@ -226,6 +230,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   headerCtaLabel: 'Talk to Us',
   phoneDisplay: '',
   phoneTel: '',
+  businessEmail: 'info@rigoradvancedsolutions.com',
   location: '',
   colors: {
     background: '#040b18',
@@ -340,6 +345,8 @@ export const DEFAULT_SETTINGS: SiteSettings = {
     intro: 'Tell us what you are working on, or book a consultation to explore what AI could do for your business. We reply personally, usually within one business day.',
     phoneCardTitle: 'Call Us',
     phoneCardNote: 'Prefer to talk? Call, and we will walk through your idea together.',
+    emailCardTitle: 'Email Us',
+    emailCardNote: 'Prefer to write? Email us and we will get back to you personally.',
     locationCardTitle: 'Location',
     locationCardNote: 'Serving businesses in Denver, Colorado, and beyond.',
     formTitle: 'Book a Consultation',
