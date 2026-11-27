@@ -6,6 +6,10 @@ const LOCAL_KEY = 'ras-site-settings-v1'
 /** Fill in placement + size for images saved before those fields existed. */
 function normalizeImages(page: PageKey, list: unknown): SiteImage[] {
   if (!Array.isArray(list)) return []
+  const px = (v: unknown): number | undefined => {
+    const n = typeof v === 'number' ? v : undefined
+    return n !== undefined && Number.isFinite(n) ? Math.min(2000, Math.max(20, Math.round(n))) : undefined
+  }
   return list
     .filter((im): im is SiteImage => !!im && typeof (im as SiteImage).url === 'string')
     .map((im) => ({
@@ -13,6 +17,8 @@ function normalizeImages(page: PageKey, list: unknown): SiteImage[] {
       position: im.position || DEFAULT_SLOT[page],
       size: im.size || 'medium',
       wrap: im.wrap || 'none',
+      width: px(im.width),
+      height: px(im.height),
     }))
 }
 
@@ -24,6 +30,7 @@ function mergeWithDefaults(raw: unknown): SiteSettings {
     ...(raw as Partial<SiteSettings>),
     colors: { ...DEFAULT_SETTINGS.colors, ...((raw as SiteSettings).colors ?? {}) },
     fonts: { ...DEFAULT_SETTINGS.fonts, ...((raw as SiteSettings).fonts ?? {}) },
+    viewSwitchLabels: { ...DEFAULT_SETTINGS.viewSwitchLabels, ...((raw as SiteSettings).viewSwitchLabels ?? {}) },
     fontSizes: { ...DEFAULT_SETTINGS.fontSizes, ...((raw as SiteSettings).fontSizes ?? {}) },
     nav: { ...DEFAULT_SETTINGS.nav, ...((raw as SiteSettings).nav ?? {}) },
     home: {

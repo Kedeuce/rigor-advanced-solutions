@@ -48,6 +48,10 @@ export interface SiteImage {
   /** Placement slot on the page. Images with no position render at the page's previous fixed spot. */
   position?: string
   size?: ImageSize
+  /** Exact box width in px — when set it overrides the Size preset. Blank = use the preset. */
+  width?: number
+  /** Exact box height in px — when set it overrides the Size preset. Blank = keep the photo's own height. */
+  height?: number
   /** Text wrap: 'none' (default), or float the image left/right so text flows around it. */
   wrap?: ImageWrap
 }
@@ -125,6 +129,8 @@ export interface SiteSettings {
   tagline: string
   /** Label of the "Talk to Us" button in the header (goes to Contact). */
   headerCtaLabel: string
+  /** Labels of the visitor's Mobile / Desktop view switcher in the header. */
+  viewSwitchLabels: { mobile: string; desktop: string }
   phoneDisplay: string
   phoneTel: string
   /** Business email shown on the Email Us card and in the footer. Blank hides it. */
@@ -228,6 +234,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   logoMark: 'RAS',
   tagline: "Empowering Tomorrow's Leaders With AI Technology",
   headerCtaLabel: 'Talk to Us',
+  viewSwitchLabels: { mobile: 'Mobile', desktop: 'Desktop' },
   phoneDisplay: '',
   phoneTel: '',
   businessEmail: 'info@rigoradvancedsolutions.com',
