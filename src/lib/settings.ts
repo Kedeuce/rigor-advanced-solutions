@@ -76,22 +76,29 @@ export const PLACEMENT_SLOTS: Record<PageKey, { value: string; label: string }[]
     { value: 'top', label: 'Top of the page, above the hero' },
     { value: 'hero', label: 'Beside the hero text (only when the globe is blank)' },
     { value: 'after-services', label: 'After the services' },
+    { value: 'after-why', label: 'After Why Rigor' },
     { value: 'after-how-we-work', label: 'After How We Work' },
     { value: 'bottom', label: 'Bottom of the page' },
   ],
   services: [
     { value: 'top', label: 'Top of the page' },
+    { value: 'after-intro', label: 'After the intro, before the services' },
+    { value: 'after-service-1', label: 'After the 1st service' },
+    { value: 'after-service-2', label: 'After the 2nd service' },
+    { value: 'after-service-3', label: 'After the 3rd service' },
     { value: 'after-details', label: 'After the service details' },
     { value: 'bottom', label: 'Bottom of the page' },
   ],
   about: [
     { value: 'top', label: 'Top of the page' },
+    { value: 'after-intro', label: 'After the intro, before Our Mission and Our Promise' },
     { value: 'after-story', label: 'After Our Mission and Our Promise' },
     { value: 'after-values', label: 'After Our Values' },
     { value: 'bottom', label: 'Bottom of the page' },
   ],
   contact: [
     { value: 'top', label: 'Top of the page' },
+    { value: 'after-intro', label: 'After the intro, before the phone and location cards' },
     { value: 'after-info', label: 'After the phone and location cards' },
     { value: 'after-form', label: 'After the booking form' },
     { value: 'bottom', label: 'Bottom of the page, after the closing band' },
@@ -107,6 +114,8 @@ export const DEFAULT_SLOT: Record<PageKey, string> = {
 
 export interface SiteSettings {
   businessName: string
+  /** Letters in the logo badge in the header (e.g. RAS). */
+  logoMark: string
   tagline: string
   phoneDisplay: string
   phoneTel: string
@@ -135,6 +144,8 @@ export interface SiteSettings {
     intro: string
     goldLine: string
     servicesLabel: string
+    /** Text of the "See full details" link under each service card on Home. */
+    seeDetails: string
     whyTitle: string
     whyIntro: string
     whyItems: WhyItem[]
@@ -196,6 +207,7 @@ export const FONT_CHOICES = [
 
 export const DEFAULT_SETTINGS: SiteSettings = {
   businessName: 'Rigor Advanced Solutions',
+  logoMark: 'RAS',
   tagline: "Empowering Tomorrow's Leaders With AI Technology",
   phoneDisplay: '',
   phoneTel: '',
@@ -222,6 +234,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
       'Rigor Advanced Solutions helps ambitious businesses work smarter with artificial intelligence. We design practical AI systems that save time, cut busywork, and turn your data into decisions you can act on, today, not someday.',
     goldLine: 'Practical AI, built for real businesses, delivered with care.',
     servicesLabel: 'What We Do',
+    seeDetails: 'See full details',
     whyTitle: 'Why Rigor',
     whyIntro: 'We build AI that fits your business, not the other way around.',
     whyItems: [
