@@ -12,6 +12,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import App from './App'
 import { DEFAULT_SETTINGS } from './lib/settings'
 import { supabase } from './lib/supabase'
@@ -123,6 +125,11 @@ describe('Admin font-size Size boxes', () => {
     expect(root.style.getPropertyValue('--heading-size')).toBe('50px')
   })
 })
+
+/** The shipped stylesheet, read from disk: Vitest stubs CSS imports to
+    an empty string, and jsdom has no layout engine, so the stylesheet
+    text itself is what the suite can check for the grid/spacing rules. */
+const cssText = readFileSync(join(process.cwd(), 'src', 'index.css'), 'utf-8')
 
 /** Helpers for the audit tests below. */
 const SETTINGS_KEY = 'ras-site-settings-v1'
@@ -507,5 +514,95 @@ describe('Redesign — footer everywhere, hero buttons, stats strip, clean copy'
     await screen.findByText('Why Rigor')
     const strip = document.querySelector('.stats-strip') as HTMLElement
     await waitFor(() => expect(within(strip).getByText('75+')).not.toBeNull())
+  })
+})
+
+describe('Follow-up fixes — business email and card spacing', () => {
+  const EMAIL = 'info@rigoradvancedsolutions.com'
+
+  it('shows the business email on the Contact Email Us card and in the footer', async () => {
+    const user = userEvent.setup()
+    goToHome()
+    render(<App />)
+    await screen.findByText('Why Rigor')
+    await user.click(navButton('Contact'))
+    await screen.findByText('Book a Consultation')
+
+    // One mailto link on the Email Us card, one in the footer.
+    const links = screen.getAllByText(EMAIL)
+    expect(links).toHaveLength(2)
+    for (const link of links) {
+      expect(link.closest('a')?.getAttribute('href')).toBe(`mailto:${EMAIL}`)
+    }
+    // The Email Us card sits between the Call Us and Location cards.
+    const emailHeading = screen.getByText('Email Us')
+    const card = emailHeading.closest('.info-card') as HTMLElement
+    expect(within(card).getByText(EMAIL)).not.toBeNull()
+    const footer = document.querySelector('.site-footer') as HTMLElement
+    expect(within(footer).getByText(EMAIL)).not.toBeNull()
+    // Phone and location stay blank by her order: still no tel: link.
+    expect(document.querySelector('.site-footer a[href^="tel:"]')).toBeNull()
+  })
+
+  it('shows no email line anywhere when the business email is blanked', async () => {
+    const user = userEvent.setup()
+    goToHome()
+    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...DEFAULT_SETTINGS, businessEmail: '' }))
+    render(<App />)
+    await screen.findByText('Why Rigor')
+    expect(document.querySelector('a[href^="mailto:"]')).toBeNull()
+    expect(document.body.textContent).not.toContain(EMAIL)
+
+    // The Email Us card itself still renders (title + note), like the
+    // phone card does while the phone is blank — only the email line hides.
+    await user.click(navButton('Contact'))
+    await screen.findByText('Book a Consultation')
+    expect(screen.getByText('Email Us')).not.toBeNull()
+    expect(document.querySelector('a[href^="mailto:"]')).toBeNull()
+  })
+
+  it('has an editable Business email field in Admin and the new address shows on the site', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('Business name')
+    const label = screen.getByText('Business email')
+    const input = within(label.closest('.field') as HTMLElement).getAllByRole('textbox')[0] as HTMLInputElement
+    await user.clear(input)
+    await user.type(input, 'hello@rigoradvancedsolutions.com')
+    await user.click(navButton('Contact'))
+    await screen.findByText('Book a Consultation')
+    const links = screen.getAllByText('hello@rigoradvancedsolutions.com')
+    expect(links.length).toBeGreaterThanOrEqual(2)
+    for (const link of links) {
+      expect(link.closest('a')?.getAttribute('href')).toBe('mailto:hello@rigoradvancedsolutions.com')
+    }
+  })
+
+  it('does not stretch the card grids and keeps the footer close to the last content', async () => {
+    const user = userEvent.setup()
+    // jsdom has no layout engine, so the shipped stylesheet itself is
+    // what the suite can check: read it as text and assert the rules.
+    const rules = (selector: string) => {
+      const re = new RegExp(`\\${selector}\\s*\\{[^}]*\\}`, 'g')
+      return Array.from(cssText.matchAll(re)).map((m) => m[0])
+    }
+    const has = (selector: string, decl: string) => rules(selector).some((r) => r.includes(decl))
+    expect(has('.cards', 'align-items: start')).toBe(true)
+    expect(has('.steps', 'align-items: start')).toBe(true)
+    expect(has('.two-col', 'align-items: start')).toBe(true)
+    expect(has('.info-cards', 'repeat(3, 1fr)')).toBe(true)
+    expect(has('.info-cards', 'align-items: start')).toBe(true)
+    expect(has('.site-footer', 'margin-top: 28px')).toBe(true)
+    expect(has('.closing', 'margin: 28px 0 0')).toBe(true)
+
+    // The Services page no longer carries the extra 84px bottom padding.
+    goToHome()
+    render(<App />)
+    await screen.findByText('Why Rigor')
+    await user.click(navButton('Services'))
+    await screen.findByText('Services That Move Your Business Forward')
+    const section = document.querySelector('section.section') as HTMLElement
+    expect(section).not.toBeNull()
+    expect(section.style.paddingBottom).toBe('')
   })
 })

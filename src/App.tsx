@@ -933,7 +933,7 @@ export default function App() {
 
   if (view === 'services') {
     page = (
-      <section className="section" style={{ paddingBottom: 84 }}><div className="wrap">
+      <section className="section"><div className="wrap">
         <SlotImages page="services" slot="top" images={s.images?.services ?? []}  captionSize={fs('images.caption', 14)} />
         <span className="eyebrow" style={{ fontSize: fs('services.label', 13) }}>{s.services.label}</span>
         <h1 style={{ fontSize: fs('services.title', headingBase) }}>{s.services.title}</h1>
@@ -996,11 +996,16 @@ export default function App() {
         <h1 style={{ fontSize: fs('contact.title', headingBase) }}>{s.contact.title}</h1>
         <p style={{ maxWidth: 720, fontSize: fs('contact.intro', 18) }}>{s.contact.intro}</p>
         <SlotImages page="contact" slot="after-intro" images={s.images?.contact ?? []}  captionSize={fs('images.caption', 14)} />
-        <div className="two-col" style={{ marginTop: 28 }}>
+        <div className="info-cards" style={{ marginTop: 28 }}>
           <article className="info-card">
             <h2 style={{ fontSize: fs('contact.phoneCardTitle', Math.round(headingBase * 0.63)) }}>{s.contact.phoneCardTitle}</h2>
             <a href={`tel:${s.phoneTel}`} style={{ fontSize: fs('business.phoneDisplay', 22) }}>{s.phoneDisplay}</a>
             <p style={{ fontSize: fs('contact.phoneCardNote', bodyBase) }}>{s.contact.phoneCardNote}</p>
+          </article>
+          <article className="info-card">
+            <h2 style={{ fontSize: fs('contact.emailCardTitle', Math.round(headingBase * 0.63)) }}>{s.contact.emailCardTitle}</h2>
+            {s.businessEmail ? <a href={`mailto:${s.businessEmail}`} style={{ fontSize: fs('business.emailDisplay', 22), overflowWrap: 'anywhere' }}>{s.businessEmail}</a> : null}
+            <p style={{ fontSize: fs('contact.emailCardNote', bodyBase) }}>{s.contact.emailCardNote}</p>
           </article>
           <article className="info-card">
             <h2 style={{ fontSize: fs('contact.locationCardTitle', Math.round(headingBase * 0.63)) }}>{s.contact.locationCardTitle}</h2>
@@ -1272,6 +1277,9 @@ export default function App() {
           <Field label="Note under the phone number" value={s.contact.phoneCardNote} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, phoneCardNote: v } }))} {...sizeProps('contact.phoneCardNote', bodyBase)} />
           <Field label="Location card title" value={s.contact.locationCardTitle} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, locationCardTitle: v } }))} {...sizeProps('contact.locationCardTitle', Math.round(headingBase * 0.63))} />
           <Field label="Location card note" value={s.contact.locationCardNote} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, locationCardNote: v } }))} {...sizeProps('contact.locationCardNote', bodyBase)} />
+          <Field label="Email card title" value={s.contact.emailCardTitle} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, emailCardTitle: v } }))} {...sizeProps('contact.emailCardTitle', Math.round(headingBase * 0.63))} />
+          <Field label="Business email" value={s.businessEmail} onChange={(v) => set((p) => ({ ...p, businessEmail: v }))} {...sizeProps('business.emailDisplay', 16)} />
+          <Field label="Note under the email address" value={s.contact.emailCardNote} textarea onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, emailCardNote: v } }))} {...sizeProps('contact.emailCardNote', bodyBase)} />
           <Field label="Form title" value={s.contact.formTitle} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, formTitle: v } }))} {...sizeProps('contact.formTitle', 24)} />
           <Field label="Name label" value={s.contact.nameLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, nameLabel: v } }))} {...sizeProps('contact.nameLabel', bodyBase)} />
           <Field label="Email label" value={s.contact.emailLabel} onChange={(v) => set((p) => ({ ...p, contact: { ...p.contact, emailLabel: v } }))} {...sizeProps('contact.emailLabel', bodyBase)} />
@@ -1340,6 +1348,7 @@ export default function App() {
           <div><h3 style={{ fontSize: fs('footer.contactTitle', 18) }}>{s.footer.contactTitle}</h3>
             <p>
               {s.phoneDisplay ? (<><a href={`tel:${s.phoneTel}`} style={{ fontSize: fs('business.phoneDisplay', bodyBase) }}>{s.phoneDisplay}</a><br /></>) : null}
+              {s.businessEmail ? (<><a href={`mailto:${s.businessEmail}`} style={{ fontSize: fs('business.emailDisplay', bodyBase), overflowWrap: 'anywhere' }}>{s.businessEmail}</a><br /></>) : null}
               {s.location ? <span style={{ fontSize: fs('contact.location', bodyBase) }}>{s.location}</span> : null}
             </p>
           </div>
