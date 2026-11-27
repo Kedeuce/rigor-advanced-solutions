@@ -44,7 +44,7 @@ const SERVICE_ICONS: ReactNode[] = [
  * top slot uses that, because its floated images render inside the hero
  * text instead, where the hero headline and intro wrap around them.)
  */
-function FloatImages({ page, slot, images }: { page: PageKey; slot: string; images: SiteImage[] }) {
+function FloatImages({ page, slot, images, captionSize = 14 }: { page: PageKey; slot: string; images: SiteImage[]; captionSize?: number }) {
   const list = (images ?? []).filter((im) => (im.position || DEFAULT_SLOT[page]) === slot && (im.wrap === 'left' || im.wrap === 'right'))
   if (list.length === 0) return null
   return (
@@ -52,26 +52,26 @@ function FloatImages({ page, slot, images }: { page: PageKey; slot: string; imag
       {list.map((img) => (
         <figure className={`slot-img size-${img.size || 'medium'} wrap-${img.wrap}`} key={img.id}>
           <img src={img.url} alt={img.alt || 'Image'} loading="lazy" />
-          {img.caption ? <figcaption>{img.caption}</figcaption> : null}
+          {img.caption ? <figcaption style={{ fontSize: captionSize }}>{img.caption}</figcaption> : null}
         </figure>
       ))}
     </>
   )
 }
 
-function SlotImages({ page, slot, images, className = '', includeFloated = true }: { page: PageKey; slot: string; images: SiteImage[]; className?: string; includeFloated?: boolean }) {
+function SlotImages({ page, slot, images, className = '', includeFloated = true, captionSize = 14 }: { page: PageKey; slot: string; images: SiteImage[]; className?: string; includeFloated?: boolean; captionSize?: number }) {
   const list = (images ?? []).filter((im) => (im.position || DEFAULT_SLOT[page]) === slot)
   if (list.length === 0) return null
   const normal = list.filter((im) => !im.wrap || im.wrap === 'none')
   return (
     <>
-      {includeFloated && <FloatImages page={page} slot={slot} images={images} />}
+      {includeFloated && <FloatImages page={page} slot={slot} images={images} captionSize={captionSize} />}
       {normal.length > 0 && (
         <div className={`slot-images ${className}`}>
           {normal.map((img) => (
             <figure className={`slot-img size-${img.size || 'medium'}`} key={img.id}>
               <img src={img.url} alt={img.alt || 'Image'} loading="lazy" />
-              {img.caption ? <figcaption>{img.caption}</figcaption> : null}
+              {img.caption ? <figcaption style={{ fontSize: captionSize }}>{img.caption}</figcaption> : null}
             </figure>
           ))}
         </div>
@@ -222,6 +222,55 @@ function DraftSizeInput({ value, placeholder, min, max, onCommit, title }: {
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
     />
+  )
+}
+
+/**
+ * A text field whose value is transformed before saving (the service
+ * "includes" list is stored as an array, edited as comma-separated
+ * text). Typing must not re-split on every keystroke — the old version
+ * split the text on each key and re-joined it, so the comma vanished
+ * as soon as it was typed and a second item could never be entered.
+ * This one keeps a local draft while typing and commits on blur / Enter.
+ * Optional size props work exactly like Field's Size box.
+ */
+function DraftTextField({ label, value, onCommit, sizeKey, sizeValue, sizePlaceholder, onSizeChange }: {
+  label: string
+  value: string
+  onCommit: (v: string) => void
+  sizeKey?: string
+  sizeValue?: number
+  sizePlaceholder?: number
+  onSizeChange?: (n: number | undefined) => void
+}) {
+  const [draft, setDraft] = useState(value)
+  useEffect(() => { setDraft(value) }, [value])
+  return (
+    <div className="field">
+      <label>{label}</label>
+      <div className="field-with-size">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => onCommit(draft)}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+        />
+        {sizeKey && onSizeChange && (
+          <div className="size-box">
+            <span>Size</span>
+            <DraftSizeInput
+              value={sizeValue}
+              placeholder={sizePlaceholder}
+              min={10}
+              max={96}
+              onCommit={onSizeChange}
+              title="Size of this text in pixels — leave blank to use the general size"
+            />
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -401,7 +450,10 @@ export default function App() {
   const [confirmPin, setConfirmPin] = useState('')
   const [pinFormNote, setPinFormNote] = useState('')
   const [pinFormBusy, setPinFormBusy] = useState(false)
-  const [uploadNote, setUploadNote] = useState('')
+  /** Notes from image adds/uploads, one per page (and 'hero') — a note
+      under an editor Dada did not touch would be confusing. */
+  const [uploadNote, setUploadNote] = useState<Record<string, string>>({})
+  const setPageNote = (page: string, msg: string) => setUploadNote((n) => ({ ...n, [page]: msg }))
   const [uploadBusy, setUploadBusy] = useState(false)
   const [urlDraft, setUrlDraft] = useState<Record<PageKey, string>>({ home: '', services: '', about: '', contact: '' })
   /** Where a newly added image goes on each page — picked in the Add row, before adding. */
@@ -495,7 +547,9 @@ export default function App() {
     if (!ADMIN_EMAILS.includes(email)) { setRecoveryNote('That email is not the admin email for this site.'); return }
     setRecoveryBusy(true)
     setRecoveryNote('')
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } })
+    // The magic link must land back on the Admin page, not the public
+    // home page (which has no admin link at all).
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${window.location.origin}/admin` } })
     setRecoveryBusy(false)
     setRecoveryNote(error ? `Could not send the sign-in link: ${error.message}` : 'Sign-in link sent. Check your email and tap the link — it will bring you back here signed in. Then set a new PIN below.')
   }
@@ -658,21 +712,21 @@ export default function App() {
     setCropTarget(null)
     if (!target) return
     setUploadBusy(true)
-    setUploadNote('Uploading your image…')
+    setPageNote(target.kind === 'hero' ? 'hero' : target.page, 'Uploading your image…')
     try {
       const { url, stored } = await uploadSiteImage(cropped)
       if (target.kind === 'hero') {
         set((p) => ({ ...p, heroImage: url }))
-        setUploadNote('Hero image changed. Press Save Changes to make it live.')
+        setPageNote('hero', 'Hero image changed. Press Save Changes to make it live.')
       } else if (target.kind === 'replace') {
         updateImage(target.page, target.id, { url })
-        setUploadNote('Photo replaced. Press Save Changes to make it live.')
+        setPageNote(target.page, 'Photo replaced. Press Save Changes to make it live.')
       } else {
         addImage(target.page, url, cropped.name.replace(/\.[^.]+$/, ''), target.position)
-        setUploadNote(stored === 'storage' ? 'Image added. Press Save Changes to make it live.' : 'Image added (saved with the site settings). Press Save Changes to make it live.')
+        setPageNote(target.page, stored === 'storage' ? 'Image added. Press Save Changes to make it live.' : 'Image added (saved with the site settings). Press Save Changes to make it live.')
       }
     } catch {
-      setUploadNote('That image could not be added. Try a different photo, or paste an image link instead.')
+      setPageNote(target.kind === 'hero' ? 'hero' : target.page, 'That image could not be added. Try a different photo, or paste an image link instead.')
     } finally {
       setUploadBusy(false)
     }
@@ -680,10 +734,10 @@ export default function App() {
 
   function handleImageUrl(page: PageKey) {
     const url = (urlDraft[page] || '').trim()
-    if (!url) { setUploadNote('Paste an image link first, or choose a file to upload.'); return }
+    if (!url) { setPageNote(page, 'Paste an image link first, or choose a file to upload.'); return }
     addImage(page, url, '', addPosition[page] || DEFAULT_SLOT[page])
     setUrlDraft((d) => ({ ...d, [page]: '' }))
-    setUploadNote('Image added. Press Save Changes to make it live.')
+    setPageNote(page, 'Image added. Press Save Changes to make it live.')
   }
 
   const imageEditor = (page: PageKey, label: string) => {
@@ -732,7 +786,7 @@ export default function App() {
               </div>
               <div className="field">
                 <label>Text wrap</label>
-                <select value={img.wrap || 'none'} onChange={(e) => updateImage(page, img.id, { wrap: e.target.value as ImageWrap })}>
+                <select value={img.wrap || 'none'} disabled={(img.position || DEFAULT_SLOT[page]) === 'hero'} title={(img.position || DEFAULT_SLOT[page]) === 'hero' ? 'Text wrap does not apply to images beside the hero text' : undefined} onChange={(e) => updateImage(page, img.id, { wrap: e.target.value as ImageWrap })}>
                   {IMAGE_WRAPS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
@@ -769,7 +823,7 @@ export default function App() {
           <input type="text" placeholder="Or paste an image link, then press Add" value={urlDraft[page]} onChange={(e) => setUrlDraft((d) => ({ ...d, [page]: e.target.value }))} />
           <button className="btn secondary" style={{ marginTop: 0, padding: '10px 18px', minHeight: 44 }} onClick={() => handleImageUrl(page)}>Add</button>
         </div>
-        {uploadNote && <p style={{ marginTop: 10, color: 'var(--accent)', fontWeight: 600, fontSize: 14 }}>{uploadNote}</p>}
+        {uploadNote[page] && <p style={{ marginTop: 10, color: 'var(--accent)', fontWeight: 600, fontSize: 14 }}>{uploadNote[page]}</p>}
       </section>
     )
   }
@@ -799,18 +853,22 @@ export default function App() {
     const heroSlotImages = (s.images?.home ?? []).filter((im) => (im.position || DEFAULT_SLOT.home) === 'hero')
     page = (
       <>
-        <div className="wrap"><SlotImages page="home" slot="top" images={s.images?.home ?? []} includeFloated={false} /></div>
+        <div className="wrap"><SlotImages page="home" slot="top" images={s.images?.home ?? []} includeFloated={false}  captionSize={fs('images.caption', 14)} /></div>
         <section className="hero">
           <div className="wrap hero-inner">
             <div className="hero-text">
-              <FloatImages page="home" slot="top" images={s.images?.home ?? []} />
+              <FloatImages page="home" slot="top" images={s.images?.home ?? []}  captionSize={fs('images.caption', 14)} />
               <span className="eyebrow" style={{ fontSize: fs('home.eyebrow', 13) }}>{s.home.eyebrow}</span>
               <h1 style={{ fontSize: `clamp(34px, 6vw, ${fs('home.headline', Math.round(headingBase * 1.6))}px)` }}>{s.home.headline}</h1>
               <p className="subhead" style={{ fontSize: `clamp(18px, 2.5vw, ${fs('home.subhead', 24)}px)` }}>{s.home.subhead}</p>
               <p className="lede" style={{ fontSize: fs('home.intro', 18) }}>{s.home.intro}</p>
               {s.breakers?.showGoldLine !== false && <p className="gold-line" style={{ fontSize: fs('home.goldLine', 18) }}>{s.home.goldLine}</p>}
             </div>
-            {s.heroImage ? <img className="hero-img" src={s.heroImage} alt="Glowing network globe" /> : heroSlotImages.map((im) => <img key={im.id} className="hero-img" src={im.url} alt={im.alt || 'Image'} />)}
+            {s.heroImage ? <img className="hero-img" src={s.heroImage} alt="Glowing network globe" /> : heroSlotImages.length > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, flex: '0 1 340px', maxWidth: '100%', justifyContent: 'center', alignItems: 'center' }}>
+                {heroSlotImages.map((im) => <img key={im.id} className="hero-img" src={im.url} alt={im.alt || 'Image'} />)}
+              </div>
+            ) : null}
           </div>
         </section>
         {s.breakers?.homeSections && <div className="wrap"><hr className="section-breaker" /></div>}
@@ -823,11 +881,11 @@ export default function App() {
                 <div className="service-icon">{SERVICE_ICONS[i] ?? null}</div>
                 <h3 style={{ fontSize: fs(`services.items.${i}.name`, 21) }}>{it.name}</h3>
                 <p style={{ fontSize: fs(`services.items.${i}.short`, bodyBase) }}>{it.short}</p>
-                <button className="linklike" onClick={() => go('services')}>See full details</button>
+                <button className="linklike" style={{ fontSize: fs('home.seeDetails', 15) }} onClick={() => go('services')}>{s.home.seeDetails}</button>
               </article>
             ))}
           </div>
-          <SlotImages page="home" slot="after-services" images={s.images?.home ?? []} />
+          <SlotImages page="home" slot="after-services" images={s.images?.home ?? []}  captionSize={fs('images.caption', 14)} />
         </div></section>
         {s.breakers?.homeSections && <div className="wrap"><hr className="section-breaker" /></div>}
         <section className="section"><div className="wrap">
@@ -839,6 +897,7 @@ export default function App() {
             ))}
           </div>
         </div></section>
+        <div className="wrap"><SlotImages page="home" slot="after-why" images={s.images?.home ?? []}  captionSize={fs('images.caption', 14)} /></div>
         {s.breakers?.homeSections && <div className="wrap"><hr className="section-breaker" /></div>}
         <section className="section"><div className="wrap">
           <h2 className="section-title" style={{ fontSize: titleSize('home.processTitle') }}>{s.home.processTitle}</h2>
@@ -846,14 +905,14 @@ export default function App() {
           <div className="steps">
             {s.home.processSteps.map((st, i) => (
               <article className="card" key={st.title}>
-                <div className="step-num">{i + 1}</div>
+                <div className="step-num" style={{ fontSize: fs('home.stepNumber', 34) }}>{i + 1}</div>
                 <h3 style={{ fontSize: fs(`home.processSteps.${i}.title`, 21) }}>{st.title}</h3><p style={{ fontSize: fs(`home.processSteps.${i}.text`, bodyBase) }}>{st.text}</p>
               </article>
             ))}
           </div>
-          <SlotImages page="home" slot="after-how-we-work" images={s.images?.home ?? []} />
+          <SlotImages page="home" slot="after-how-we-work" images={s.images?.home ?? []}  captionSize={fs('images.caption', 14)} />
         </div></section>
-        <div className="wrap"><SlotImages page="home" slot="bottom" images={s.images?.home ?? []} /></div>
+        <div className="wrap"><SlotImages page="home" slot="bottom" images={s.images?.home ?? []}  captionSize={fs('images.caption', 14)} /></div>
       </>
     )
   }
@@ -861,10 +920,11 @@ export default function App() {
   if (view === 'services') {
     page = (
       <section className="section" style={{ paddingBottom: 84 }}><div className="wrap">
-        <SlotImages page="services" slot="top" images={s.images?.services ?? []} />
+        <SlotImages page="services" slot="top" images={s.images?.services ?? []}  captionSize={fs('images.caption', 14)} />
         <span className="eyebrow" style={{ fontSize: fs('services.label', 13) }}>{s.services.label}</span>
         <h1 style={{ fontSize: fs('services.title', headingBase) }}>{s.services.title}</h1>
         <p style={{ maxWidth: 720, fontSize: fs('services.intro', 18) }}>{s.services.intro}</p>
+        <SlotImages page="services" slot="after-intro" images={s.images?.services ?? []}  captionSize={fs('images.caption', 14)} />
         {s.services.items.map((it, i) => (
           <Fragment key={it.name}>
             <article className="service-detail">
@@ -876,11 +936,12 @@ export default function App() {
               <h3 style={{ fontSize: fs('services.includesHeading', 19) }}>{s.services.includesHeading}</h3>
               <ul style={{ fontSize: fs(`services.items.${i}.includes`, bodyBase) }}>{it.includes.map((inc) => <li key={inc}>{inc}</li>)}</ul>
             </article>
+            {i < s.services.items.length - 1 && <SlotImages page="services" slot={`after-service-${i + 1}`} images={s.images?.services ?? []}  captionSize={fs('images.caption', 14)} />}
             {s.breakers?.servicesSections && i < s.services.items.length - 1 && <hr className="section-breaker" />}
           </Fragment>
         ))}
-        <SlotImages page="services" slot="after-details" images={s.images?.services ?? []} />
-        <SlotImages page="services" slot="bottom" images={s.images?.services ?? []} />
+        <SlotImages page="services" slot="after-details" images={s.images?.services ?? []}  captionSize={fs('images.caption', 14)} />
+        <SlotImages page="services" slot="bottom" images={s.images?.services ?? []}  captionSize={fs('images.caption', 14)} />
       </div></section>
     )
   }
@@ -888,16 +949,17 @@ export default function App() {
   if (view === 'about') {
     page = (
       <section className="section"><div className="wrap">
-        <SlotImages page="about" slot="top" images={s.images?.about ?? []} />
+        <SlotImages page="about" slot="top" images={s.images?.about ?? []}  captionSize={fs('images.caption', 14)} />
         <span className="eyebrow" style={{ fontSize: fs('about.label', 13) }}>{s.about.label}</span>
         <h1 style={{ fontSize: fs('about.title', headingBase) }}>{s.about.title}</h1>
         <p style={{ maxWidth: 720, fontSize: fs('about.intro', 18) }}>{s.about.intro}</p>
         <p style={{ fontSize: fs('tagline', 20), color: 'var(--accent)', fontWeight: 600 }}>{s.tagline}</p>
+        <SlotImages page="about" slot="after-intro" images={s.images?.about ?? []}  captionSize={fs('images.caption', 14)} />
         <div className="two-col" style={{ marginTop: 28 }}>
           <article className="info-card"><h2 style={{ fontSize: fs('about.missionTitle', Math.round(headingBase * 0.63)) }}>{s.about.missionTitle}</h2><p style={{ fontSize: fs('about.missionText', bodyBase) }}>{s.about.missionText}</p></article>
           <article className="info-card"><h2 style={{ fontSize: fs('about.promiseTitle', Math.round(headingBase * 0.63)) }}>{s.about.promiseTitle}</h2><p style={{ fontSize: fs('about.promiseText', bodyBase) }}>{s.about.promiseText}</p></article>
         </div>
-        <SlotImages page="about" slot="after-story" images={s.images?.about ?? []} />
+        <SlotImages page="about" slot="after-story" images={s.images?.about ?? []}  captionSize={fs('images.caption', 14)} />
         {s.breakers?.aboutSections && <hr className="section-breaker" />}
         <h2 className="section-title" style={{ marginTop: 40, fontSize: titleSize('about.valuesTitle') }}>{s.about.valuesTitle}</h2>
         <div className="cards">
@@ -906,8 +968,8 @@ export default function App() {
           ))}
         </div>
         {s.breakers?.aboutSections && <hr className="section-breaker" />}
-        <SlotImages page="about" slot="after-values" images={s.images?.about ?? []} />
-        <SlotImages page="about" slot="bottom" images={s.images?.about ?? []} />
+        <SlotImages page="about" slot="after-values" images={s.images?.about ?? []}  captionSize={fs('images.caption', 14)} />
+        <SlotImages page="about" slot="bottom" images={s.images?.about ?? []}  captionSize={fs('images.caption', 14)} />
       </div></section>
     )
   }
@@ -915,10 +977,11 @@ export default function App() {
   if (view === 'contact') {
     page = (
       <section className="section"><div className="wrap">
-        <SlotImages page="contact" slot="top" images={s.images?.contact ?? []} />
+        <SlotImages page="contact" slot="top" images={s.images?.contact ?? []}  captionSize={fs('images.caption', 14)} />
         <span className="eyebrow" style={{ fontSize: fs('contact.label', 13) }}>{s.contact.label}</span>
         <h1 style={{ fontSize: fs('contact.title', headingBase) }}>{s.contact.title}</h1>
         <p style={{ maxWidth: 720, fontSize: fs('contact.intro', 18) }}>{s.contact.intro}</p>
+        <SlotImages page="contact" slot="after-intro" images={s.images?.contact ?? []}  captionSize={fs('images.caption', 14)} />
         <div className="two-col" style={{ marginTop: 28 }}>
           <article className="info-card">
             <h2 style={{ fontSize: fs('contact.phoneCardTitle', Math.round(headingBase * 0.63)) }}>{s.contact.phoneCardTitle}</h2>
@@ -932,7 +995,7 @@ export default function App() {
           </article>
         </div>
         {s.breakers?.contactSections && <hr className="section-breaker" />}
-        <SlotImages page="contact" slot="after-info" images={s.images?.contact ?? []} />
+        <SlotImages page="contact" slot="after-info" images={s.images?.contact ?? []}  captionSize={fs('images.caption', 14)} />
         <form className="consult" onSubmit={(e) => { e.preventDefault(); setSubmitted(true) }}>
           <h2 style={{ fontSize: fs('contact.formTitle', 24) }}>{s.contact.formTitle}</h2>
           <label style={{ fontSize: fs('contact.nameLabel', bodyBase) }}>{s.contact.nameLabel}</label>
@@ -950,14 +1013,14 @@ export default function App() {
           )}
           {submitted && <a className="btn secondary" href={`tel:${s.phoneTel}`} style={{ marginLeft: 12, textDecoration: 'none', fontSize: fs('contact.callButtonLabel', 17) }}>{s.contact.callButtonLabel}</a>}
         </form>
-        <SlotImages page="contact" slot="after-form" images={s.images?.contact ?? []} />
+        <SlotImages page="contact" slot="after-form" images={s.images?.contact ?? []}  captionSize={fs('images.caption', 14)} />
         {s.breakers?.contactSections && <hr className="section-breaker" />}
         <div className="closing">
           <h2 style={{ fontSize: `clamp(24px, 4vw, ${fs('contact.closingTitle', Math.round(headingBase * 0.9))}px)` }}>{s.contact.closingTitle}</h2>
           <p style={{ fontSize: fs('contact.closingText', bodyBase) }}>{s.contact.closingText}</p>
           <a className="btn" href={`tel:${s.phoneTel}`} style={{ textDecoration: 'none', fontSize: fs('contact.callButtonLabel', 17) }}>{s.contact.callButtonLabel}</a>
         </div>
-        <SlotImages page="contact" slot="bottom" images={s.images?.contact ?? []} />
+        <SlotImages page="contact" slot="bottom" images={s.images?.contact ?? []}  captionSize={fs('images.caption', 14)} />
       </div></section>
     )
   }
@@ -1046,6 +1109,7 @@ export default function App() {
 
         <section className="admin-section"><h2>Business details</h2>
           <Field label="Business name" value={s.businessName} onChange={(v) => set((p) => ({ ...p, businessName: v }))} {...sizeProps('brand.name', 26)} />
+          <Field label="Logo letters (the badge in the header)" value={s.logoMark} onChange={(v) => set((p) => ({ ...p, logoMark: v }))} {...sizeProps('logo.mark', 20)} />
           <Field label="Tagline" value={s.tagline} onChange={(v) => set((p) => ({ ...p, tagline: v }))} {...sizeProps('tagline', 16)} />
           <Field label="Phone, as shown" value={s.phoneDisplay} onChange={(v) => set((p) => ({ ...p, phoneDisplay: v }))} {...sizeProps('business.phoneDisplay', 16)} />
           <Field label="Phone, for tap to call (digits only, with country code)" value={s.phoneTel} onChange={(v) => set((p) => ({ ...p, phoneTel: v }))} />
@@ -1066,8 +1130,9 @@ export default function App() {
             <DraftSizeInput value={s.fonts.bodySize ?? 16} min={12} max={24} onCommit={(n) => set((p) => ({ ...p, fonts: { ...p.fonts, bodySize: n ?? 16 } }))} title="Body text size in pixels" />
           </div>
           <div className="field"><label>Corner roundness (px)</label>
-            <input type="text" value={String(s.fonts.radius)} onChange={(e) => set((p) => ({ ...p, fonts: { ...p.fonts, radius: Number(e.target.value) || 0 } }))} />
+            <DraftSizeInput value={s.fonts.radius} min={0} max={40} onCommit={(n) => set((p) => ({ ...p, fonts: { ...p.fonts, radius: n ?? 9 } }))} title="Corner roundness in pixels" />
           </div>
+          <SizeField label="Image caption size (px)" value={settings.fontSizes?.['images.caption']} placeholder={14} onChange={(n) => setSize('images.caption', n)} />
           <ColorField label="Background" value={s.colors.background} onChange={(v) => set((p) => ({ ...p, colors: { ...p.colors, background: v } }))} />
           <ColorField label="Card surface" value={s.colors.surface} onChange={(v) => set((p) => ({ ...p, colors: { ...p.colors, surface: v } }))} />
           <ColorField label="Accent" value={s.colors.accent} onChange={(v) => set((p) => ({ ...p, colors: { ...p.colors, accent: v } }))} />
@@ -1083,7 +1148,7 @@ export default function App() {
           <p style={{ fontSize: 14, color: 'var(--muted)' }}>The lines that break up the page: under the header, above the footer, the gold line under the Home intro, and divider lines between sections. The gold line's colour is the Gold highlight colour in Design, and its size is set beside its text in the Home page section.</p>
           <ColorField label="Divider line colour" value={s.breakers?.color ?? '#0e5f8f'} onChange={(v) => setBreaker({ color: v })} />
           <div className="field"><label>Divider line thickness (px)</label>
-            <input type="number" min={1} max={12} value={s.breakers?.thickness ?? 1} onChange={(e) => setBreaker({ thickness: Number(e.target.value) || 1 })} />
+            <DraftSizeInput value={s.breakers?.thickness ?? 1} min={1} max={12} onCommit={(n) => setBreaker({ thickness: n ?? 1 })} title="Divider line thickness in pixels" />
           </div>
           <CheckField label="Show the line under the header" value={s.breakers?.showHeader ?? true} onChange={(v) => setBreaker({ showHeader: v })} />
           <CheckField label="Show the line above the footer" value={s.breakers?.showFooter ?? true} onChange={(v) => setBreaker({ showFooter: v })} />
@@ -1108,10 +1173,12 @@ export default function App() {
               <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadBusy} onChange={(e) => { handleHeroImageFile(e.target.files?.[0]); e.target.value = '' }} />
             </label>
           </div>
+          {uploadNote['hero'] && <p style={{ marginTop: 10, color: 'var(--accent)', fontWeight: 600, fontSize: 14 }}>{uploadNote['hero']}</p>}
           {cropFile && cropTarget?.kind === 'hero' && (
             <ImageCropper file={cropFile} onDone={(f) => void handleCropDone(f)} onCancel={() => { setCropFile(null); setCropTarget(null) }} />
           )}
-          <Field label="Services label" value={s.home.servicesLabel} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, servicesLabel: v } }))} {...sizeProps('home.servicesLabel', 13)} />
+          <Field label="Services eyebrow" value={s.home.servicesLabel} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, servicesLabel: v } }))} {...sizeProps('home.servicesLabel', 13)} />
+          <Field label="See full details button" value={s.home.seeDetails} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, seeDetails: v } }))} {...sizeProps('home.seeDetails', 15)} />
           <SizeField label="Services title size — the big “Our Services” heading on the Home page (px)" value={settings.fontSizes?.['home.servicesTitle']} placeholder={headingBase} onChange={(n) => setSize('home.servicesTitle', n)} />
           <Field label="Why Rigor title" value={s.home.whyTitle} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyTitle: v } }))} {...sizeProps('home.whyTitle', headingBase)} />
           <Field label="Why Rigor intro" value={s.home.whyIntro} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, whyIntro: v } }))} {...sizeProps('home.whyIntro', bodyBase)} />
@@ -1123,6 +1190,7 @@ export default function App() {
           ))}
           <Field label="How We Work title" value={s.home.processTitle} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, processTitle: v } }))} {...sizeProps('home.processTitle', headingBase)} />
           <Field label="How We Work intro" value={s.home.processIntro} textarea onChange={(v) => set((p) => ({ ...p, home: { ...p.home, processIntro: v } }))} {...sizeProps('home.processIntro', bodyBase)} />
+          <SizeField label="Step number size (px)" value={settings.fontSizes?.['home.stepNumber']} placeholder={34} onChange={(n) => setSize('home.stepNumber', n)} />
           {s.home.processSteps.map((st, i) => (
             <div key={i}>
               <Field label={`Step ${i + 1}, title`} value={st.title} onChange={(v) => set((p) => ({ ...p, home: { ...p.home, processSteps: p.home.processSteps.map((x, j) => (j === i ? { ...x, title: v } : x)) } }))} {...sizeProps(`home.processSteps.${i}.title`, 21)} />
@@ -1145,7 +1213,7 @@ export default function App() {
               <Field label={`Service ${i + 1}, short text`} value={it.short} textarea onChange={(v) => updateService(i, { short: v })} {...sizeProps(`services.items.${i}.short`, bodyBase)} />
               <Field label={`Service ${i + 1}, full detail`} value={it.detail} textarea onChange={(v) => updateService(i, { detail: v })} {...sizeProps(`services.items.${i}.detail`, bodyBase)} />
               <Field label={`Service ${i + 1}, who it is for`} value={it.whoFor} textarea onChange={(v) => updateService(i, { whoFor: v })} {...sizeProps(`services.items.${i}.whoFor`, bodyBase)} />
-              <Field label={`Service ${i + 1}, includes (comma separated)`} value={it.includes.join(', ')} onChange={(v) => updateService(i, { includes: v.split(',').map((x) => x.trim()).filter(Boolean) })} {...sizeProps(`services.items.${i}.includes`, bodyBase)} />
+              <DraftTextField label={`Service ${i + 1}, includes (comma separated)`} value={it.includes.join(', ')} onCommit={(v) => updateService(i, { includes: v.split(',').map((x) => x.trim()).filter(Boolean) })} {...sizeProps(`services.items.${i}.includes`, bodyBase)} />
             </div>
           ))}
         </section>
@@ -1217,7 +1285,7 @@ export default function App() {
       <header className="site-header" style={s.breakers?.showHeader === false ? { borderBottom: 'none' } : undefined}>
         <div className="wrap">
           <div className="brand-row">
-            <div className="logo-mark">RAS</div>
+            <div className="logo-mark" style={{ fontSize: fs('logo.mark', 20) }}>{s.logoMark}</div>
             <div>
               <div className="brand-name" style={{ fontSize: fs('brand.name', 26) }}>{s.businessName}</div>
               <div className="brand-tag" style={{ fontSize: fs('tagline', 13) }}>{s.tagline}</div>

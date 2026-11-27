@@ -19,7 +19,7 @@ button { font-family: inherit; cursor: pointer; }
 /* Header: RAS on its own row, nav on a separate row below */
 .site-header { border-bottom: var(--breaker-thickness, 1px) solid var(--breaker-color, var(--border)); padding: 18px 0 0; }
 .brand-row { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; }
-.logo-mark { width: 52px; height: 52px; flex: 0 0 52px; border-radius: 12px; border: 1px solid var(--accent); display: grid; place-items: center; font-family: var(--heading-font); font-weight: 800; font-size: 20px; color: var(--accent); background: rgba(86, 200, 245, 0.08); }
+.logo-mark { width: 52px; height: 52px; flex: 0 0 52px; border-radius: 12px; border: 1px solid var(--accent); display: grid; place-items: center; font-family: var(--heading-font); font-weight: 800; font-size: 20px; color: var(--accent); background: rgba(86, 200, 245, 0.08); overflow: hidden; text-align: center; }
 .brand-name { font-family: var(--heading-font); font-weight: 800; font-size: 26px; color: var(--heading); letter-spacing: 0.02em; }
 .brand-tag { font-size: 13px; color: var(--muted); }
 .nav-row { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 16px; }
@@ -71,7 +71,7 @@ button { font-family: inherit; cursor: pointer; }
 .crop-handle { position: absolute; right: -12px; bottom: -12px; width: 28px; height: 28px; background: var(--accent); border: 2px solid #fff; border-radius: 8px; cursor: nwse-resize; touch-action: none; }
 
 /* Section breaker: a divider line between sections, controlled in Admin */
-.section-breaker { border: none; border-top: var(--breaker-thickness, 1px) solid var(--breaker-color, var(--border)); margin: 12px 0 28px; }
+.section-breaker { border: none; border-top: var(--breaker-thickness, 1px) solid var(--breaker-color, var(--border)); margin: 12px 0 28px; clear: both; }
 .service-icon { width: 52px; height: 52px; color: var(--accent); margin-bottom: 12px; filter: drop-shadow(0 0 8px rgba(147, 227, 253, 0.45)); }
 .service-icon svg { width: 100%; height: 100%; }
 
@@ -83,7 +83,9 @@ button { font-family: inherit; cursor: pointer; }
 .img-add input[type="text"] { flex: 1; min-width: 180px; padding: 11px 12px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); color: var(--body); font: inherit; font-size: 15px; }
 
 .eyebrow { display: inline-block; font-size: 13px; letter-spacing: 0.14em; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 14px; }
-.section { padding: 44px 0; }
+/* Sections clear floated images, so a floated image at the end of one
+   section can never sit beside the next section's title. */
+.section { padding: 44px 0; clear: both; }
 .section-title { font-size: clamp(calc(var(--heading-size, 38px) * 0.68), 4vw, var(--heading-size, 38px)); }
 /* Page titles (Services / About / Contact) and page h2s follow the heading size too */
 .section .wrap > h1 { font-size: var(--heading-size, 38px); }
